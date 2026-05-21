@@ -11,6 +11,7 @@ pub mod decrypt;
 pub mod dict;
 pub mod error;
 pub mod header;
+pub mod index;
 pub mod key_block;
 pub mod link;
 pub mod mdd;

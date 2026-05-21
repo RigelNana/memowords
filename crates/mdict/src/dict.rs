@@ -11,6 +11,7 @@ use memmap2::Mmap;
 use crate::decompress::decompress_block;
 use crate::error::Error;
 use crate::header::parse_header;
+use crate::index::DictIndex;
 use crate::key_block::{parse_key_block_header, parse_key_block_info, split_key_block};
 use crate::link::resolve_links;
 use crate::mdd::{find_mdd_files, normalize_resource_path};
@@ -29,6 +30,8 @@ pub struct MdxDict {
     mmap: Mmap,
     /// All key entries (headword + record offset), sorted by headword.
     entries: Vec<KeyEntry>,
+    /// FST index for fast lookup.
+    index: DictIndex,
     /// Record block index for binary search.
     record_blocks: Vec<RecordIndex>,
     /// Absolute file offset where record data begins.
@@ -111,12 +114,16 @@ impl MdxDict {
         )?;
         let record_section_offset = rb_info_end as u64;
 
-        // 7. Find associated MDD files
+        // 7. Build FST index
+        let index = DictIndex::build(&all_entries)?;
+
+        // 8. Find associated MDD files
         let mdd_paths = find_mdd_files(path);
 
         tracing::info!(
             title = %info.title,
             entries = all_entries.len(),
+            unique_keys = index.len(),
             mdd_count = mdd_paths.len(),
             "MDX dictionary opened"
         );
@@ -125,6 +132,7 @@ impl MdxDict {
             info,
             mmap,
             entries: all_entries,
+            index,
             record_blocks,
             record_section_offset,
             mdd_paths,
@@ -142,31 +150,25 @@ impl MdxDict {
         &self.info.title
     }
 
-    /// Lookup a word (exact match, case-insensitive).
+    /// Lookup a word (exact match, case-insensitive via FST index).
     /// Returns all matching article HTML texts.
     pub fn lookup(&self, word: &str) -> Result<Vec<String>> {
-        let word_lower = word.to_lowercase();
-        let matching: Vec<&KeyEntry> = self
-            .entries
-            .iter()
-            .filter(|e| e.headword.to_lowercase() == word_lower)
-            .collect();
-
-        if matching.is_empty() {
+        let indices = self.index.get(word);
+        if indices.is_empty() {
             return Ok(vec![]);
         }
 
         let mut articles = Vec::new();
-        for entry in matching {
+        for &idx in &indices {
+            let entry = &self.entries[idx];
             let article = self.load_article(entry)?;
 
             // Resolve @@@LINK redirects
             let resolved = resolve_links(&article, |target| {
-                let target_lower = target.to_lowercase();
-                self.entries
-                    .iter()
-                    .find(|e| e.headword.to_lowercase() == target_lower)
-                    .and_then(|e| self.load_article(e).ok())
+                let target_indices = self.index.get(target);
+                target_indices.first().and_then(|&i| {
+                    self.load_article(&self.entries[i]).ok()
+                })
             })?;
 
             // Apply stylesheet substitution
@@ -178,14 +180,22 @@ impl MdxDict {
     }
 
     /// Prefix search: find headwords starting with the given prefix.
-    /// Returns up to `limit` headwords.
+    /// Returns up to `limit` headwords (via FST automaton, O(k) where k = results).
     pub fn prefix_search(&self, prefix: &str, limit: usize) -> Vec<&str> {
-        let prefix_lower = prefix.to_lowercase();
-        self.entries
+        let indices = self.index.prefix_search(prefix, limit);
+        indices
             .iter()
-            .filter(|e| e.headword.to_lowercase().starts_with(&prefix_lower))
-            .take(limit)
-            .map(|e| e.headword.as_str())
+            .map(|&i| self.entries[i].headword.as_str())
+            .collect()
+    }
+
+    /// Fuzzy search: find headwords within `max_distance` edits.
+    /// Returns up to `limit` headwords.
+    pub fn fuzzy_search(&self, word: &str, max_distance: u32, limit: usize) -> Vec<&str> {
+        let indices = self.index.fuzzy_search(word, max_distance, limit);
+        indices
+            .iter()
+            .map(|&i| self.entries[i].headword.as_str())
             .collect()
     }
 
