@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surface */
+  --color-surface-base: oklch(0.985 0.006 270);
+  --color-surface-raised: oklch(0.975 0.008 270);
+  --color-surface-sunken: oklch(0.955 0.01 270);
+  --color-surface-overlay: oklch(0.99 0.004 270);
+
+  /* Text */
+  --color-text-primary: oklch(0.205 0.012 270);
+  --color-text-secondary: oklch(0.445 0.01 270);
+  --color-text-tertiary: oklch(0.595 0.008 270);
+
+  /* Accent */
+  --color-accent: oklch(0.545 0.18 280);
+  --color-accent-hover: oklch(0.495 0.19 280);
+  --color-accent-subtle: oklch(0.925 0.04 280);
+  --color-accent-text: oklch(0.985 0.006 270);
+
+  /* Border */
+  --color-border: oklch(0.905 0.01 270);
+  --color-border-focus: oklch(0.545 0.18 280);
+
+  /* Semantic */
+  --color-success: oklch(0.62 0.145 155);
+  --color-warning: oklch(0.75 0.14 80);
+  --color-error: oklch(0.58 0.2 25);
+  --color-info: oklch(0.6 0.14 245);
+
+  /* Review zone */
+  --color-review-warm: oklch(0.945 0.025 65);
+
+  /* Typography */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+    sans-serif;
+  --font-cjk: "Noto Sans CJK SC", "Noto Sans CJK JP", "PingFang SC",
+    "Hiragino Sans", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  /* Easing */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+
+  /* Duration */
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 350ms;
+  --duration-slower: 500ms;
+}
+
+html {
+  font-family: var(--font-sans), var(--font-cjk);
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
