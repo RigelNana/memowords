@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { Search, BookOpen, History, Settings, ChevronLeft, BookMarked } from "lucide-react";
 import { useUiStore } from "../../stores/uiStore";
+import { DictGroupSwitcher } from "./DictGroupSwitcher";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -81,6 +82,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </NavLink>
         ))}
       </nav>
+
+      {/* Dict group switcher */}
+      <DictGroupSwitcher collapsed={collapsed} />
 
       {/* Collapse toggle */}
       <button
