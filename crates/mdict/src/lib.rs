@@ -10,7 +10,9 @@ pub mod decompress;
 pub mod decrypt;
 pub mod error;
 pub mod header;
+pub mod key_block;
 pub mod number;
+pub mod record_block;
 pub mod types;
 
 pub use error::Error;
