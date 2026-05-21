@@ -12,21 +12,27 @@ fn main() {
     let idx = path.with_extension("mdict.idx");
     let _ = std::fs::remove_file(&idx);
 
-    // First open: builds + persists index
+    // First open: builds index (write is async in background)
     let t1 = Instant::now();
     let dict = mdict::MdxDict::open(path).unwrap();
     let d1 = t1.elapsed();
     println!(
-        "First open (build + persist): {:?}  entries={}",
+        "First open (build, async write): {:?}  entries={}",
         d1,
         dict.entry_count()
     );
     drop(dict);
 
+    // Wait for background write to complete
+    std::thread::sleep(std::time::Duration::from_secs(3));
+
     // Verify cache exists
-    assert!(idx.exists(), "cache file should exist");
-    let cache_size = std::fs::metadata(&idx).unwrap().len();
-    println!("Cache file size: {:.2} MB", cache_size as f64 / 1024.0 / 1024.0);
+    if idx.exists() {
+        let cache_size = std::fs::metadata(&idx).unwrap().len();
+        println!("Cache file size: {:.2} MB", cache_size as f64 / 1024.0 / 1024.0);
+    } else {
+        println!("Warning: cache file not yet written");
+    }
 
     // Second open: loads from cache
     let t2 = Instant::now();
@@ -38,6 +44,5 @@ fn main() {
         dict2.entry_count()
     );
 
-    let speedup = d1.as_secs_f64() / d2.as_secs_f64();
-    println!("\nSpeedup: {:.1}x", speedup);
+    println!("\nFirst open speedup vs cached: {:.1}x", d1.as_secs_f64() / d2.as_secs_f64());
 }

@@ -10,7 +10,7 @@
 //! ```
 
 use std::fs;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use fst::{Automaton, IntoStreamer, Map, MapBuilder, Streamer};
@@ -206,6 +206,11 @@ impl DictIndex {
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
+
+    /// Clone the duplicates data for background serialization.
+    pub fn duplicates_clone(&self) -> Vec<Vec<usize>> {
+        self.duplicates.clone()
+    }
 }
 
 /// Case-fold and normalize a headword for indexing.
@@ -238,22 +243,66 @@ pub fn save_index(
         fst_len: fst_data.len() as u64,
     };
 
-    let mut file = fs::File::create(path)?;
-    file.write_all(&header.to_bytes())?;
-    file.write_all(fst_data)?;
+    let file = fs::File::create(path)?;
+    let mut writer = BufWriter::with_capacity(8 * 1024 * 1024, file);
+    writer.write_all(&header.to_bytes())?;
+    writer.write_all(fst_data)?;
 
-    // Also serialize duplicates: [count: u32 LE] then for each: [len: u32 LE] [indices: u32 LE...]
-    let dup_count = index.duplicates.len() as u32;
-    file.write_all(&dup_count.to_le_bytes())?;
+    // Serialize duplicates as a single contiguous buffer to minimize syscalls.
+    // Format: [count: u32 LE] then for each: [len: u32 LE] [indices: u32 LE...]
+    let total_indices: usize = index.duplicates.iter().map(|g| g.len()).sum();
+    let buf_size = 4 + index.duplicates.len() * 4 + total_indices * 4;
+    let mut dup_buf = Vec::with_capacity(buf_size);
+
+    dup_buf.extend_from_slice(&(index.duplicates.len() as u32).to_le_bytes());
     for group in &index.duplicates {
-        let len = group.len() as u32;
-        file.write_all(&len.to_le_bytes())?;
+        dup_buf.extend_from_slice(&(group.len() as u32).to_le_bytes());
         for &idx in group {
-            file.write_all(&(idx as u32).to_le_bytes())?;
+            dup_buf.extend_from_slice(&(idx as u32).to_le_bytes());
         }
     }
+    writer.write_all(&dup_buf)?;
+    writer.flush()?;
+    Ok(())
+}
 
-    file.flush()?;
+/// Save raw FST bytes + duplicates to disk (for background thread usage).
+///
+/// This avoids needing a reference to DictIndex (which isn't Send).
+pub fn save_index_raw(
+    fst_data: &[u8],
+    duplicates: &[Vec<usize>],
+    path: &Path,
+    entry_count: u64,
+    source_mtime: u64,
+) -> Result<()> {
+    let header = IndexHeader {
+        magic: *INDEX_MAGIC,
+        version: INDEX_VERSION,
+        entry_count,
+        source_mtime,
+        fst_len: fst_data.len() as u64,
+    };
+
+    let file = fs::File::create(path)?;
+    let mut writer = BufWriter::with_capacity(8 * 1024 * 1024, file);
+    writer.write_all(&header.to_bytes())?;
+    writer.write_all(fst_data)?;
+
+    // Serialize duplicates as a single contiguous buffer
+    let total_indices: usize = duplicates.iter().map(|g| g.len()).sum();
+    let buf_size = 4 + duplicates.len() * 4 + total_indices * 4;
+    let mut dup_buf = Vec::with_capacity(buf_size);
+
+    dup_buf.extend_from_slice(&(duplicates.len() as u32).to_le_bytes());
+    for group in duplicates {
+        dup_buf.extend_from_slice(&(group.len() as u32).to_le_bytes());
+        for &idx in group {
+            dup_buf.extend_from_slice(&(idx as u32).to_le_bytes());
+        }
+    }
+    writer.write_all(&dup_buf)?;
+    writer.flush()?;
     Ok(())
 }
 

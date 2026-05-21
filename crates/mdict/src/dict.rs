@@ -127,9 +127,19 @@ impl MdxDict {
             None => {
                 tracing::debug!("building FST index ({} entries)", all_entries.len());
                 let built = DictIndex::build(&all_entries)?;
-                if let Err(e) = index::save_index(&built, &idx_path, entry_count, source_mtime) {
-                    tracing::warn!(error = %e, "failed to persist FST index");
-                }
+                // Persist cache in background thread — don't block open()
+                let save_path = idx_path.clone();
+                let fst_bytes = built.fst_bytes().to_vec();
+                let dups = built.duplicates_clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = index::save_index_raw(
+                        &fst_bytes, &dups, &save_path, entry_count, source_mtime,
+                    ) {
+                        tracing::warn!(error = %e, "failed to persist FST index");
+                    } else {
+                        tracing::debug!(path = %save_path.display(), "FST index persisted");
+                    }
+                });
                 built
             }
         };
