@@ -9,9 +9,14 @@ license.workspace = true
 [dependencies]
 thiserror = { workspace = true }
 tracing = { workspace = true }
+adler = "1"
+encoding_rs = "0.8"
+quick-xml = "0.37"
+memmap2 = "0.9"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3"
 
 [[bench]]
 name = "parse"

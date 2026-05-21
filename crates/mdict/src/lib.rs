@@ -5,9 +5,14 @@
 //! Supports MDX v1.x and v2.0 formats with zlib/LZO decompression,
 //! RIPEMD128 decryption, and multiple encodings (UTF-8, UTF-16LE, GBK, GB18030).
 
+pub mod checksum;
 pub mod error;
+pub mod header;
+pub mod number;
+pub mod types;
 
 pub use error::Error;
+pub use types::{HeaderInfo, Version};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
