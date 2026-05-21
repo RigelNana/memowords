@@ -11,7 +11,7 @@ use memmap2::Mmap;
 use crate::decompress::decompress_block;
 use crate::error::Error;
 use crate::header::parse_header;
-use crate::index::DictIndex;
+use crate::index::{self, DictIndex};
 use crate::key_block::{parse_key_block_header, parse_key_block_info, split_key_block};
 use crate::link::resolve_links;
 use crate::mdd::{find_mdd_files, normalize_resource_path};
@@ -114,8 +114,25 @@ impl MdxDict {
         )?;
         let record_section_offset = rb_info_end as u64;
 
-        // 7. Build FST index
-        let index = DictIndex::build(&all_entries)?;
+        // 7. Build or load cached FST index
+        let idx_path = index::index_path_for(path);
+        let source_mtime = source_mtime_secs(path);
+        let entry_count = all_entries.len() as u64;
+
+        let index = match index::load_index(&idx_path, entry_count, source_mtime) {
+            Some(cached) => {
+                tracing::debug!(path = %idx_path.display(), "loaded cached FST index");
+                cached
+            }
+            None => {
+                tracing::debug!("building FST index ({} entries)", all_entries.len());
+                let built = DictIndex::build(&all_entries)?;
+                if let Err(e) = index::save_index(&built, &idx_path, entry_count, source_mtime) {
+                    tracing::warn!(error = %e, "failed to persist FST index");
+                }
+                built
+            }
+        };
 
         // 8. Find associated MDD files
         let mdd_paths = find_mdd_files(path);
@@ -220,6 +237,16 @@ impl MdxDict {
         // For now, return KeyNotFound — full MDD index loading is Phase 6
         Err(Error::KeyNotFound(normalized))
     }
+}
+
+/// Get the modification time of a file as seconds since UNIX epoch.
+fn source_mtime_secs(path: &Path) -> u64 {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 impl std::fmt::Debug for MdxDict {

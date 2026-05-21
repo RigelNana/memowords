@@ -42,5 +42,8 @@ tarpaulin-report.html
 # Test fixtures (large binary dict files)
 crates/mdict/tests/fixtures/
 
+# Generated FST index cache files
+*.mdict.idx
+
 # Reference files (not part of the project)
 ref/
