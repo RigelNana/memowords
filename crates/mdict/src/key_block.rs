@@ -87,9 +87,7 @@ pub fn parse_key_block_info(
     encrypted: EncryptionFlags,
     decompressed_size: Option<u64>,
 ) -> Result<Vec<BlockSizePair>> {
-    let decompressed: Vec<u8>;
-
-    if version == Version::V2 {
+    let decompressed = if version == Version::V2 {
         // May need decryption
         let mut buf = raw_info.to_vec();
         if encrypted.key_info_encrypted() {
@@ -98,11 +96,11 @@ pub fn parse_key_block_info(
 
         // Decompress
         let expected = decompressed_size.unwrap_or(0) as usize;
-        decompressed = decompress_block(&buf, expected)?;
+        decompress_block(&buf, expected)?
     } else {
         // v1.x: info is not compressed
-        decompressed = raw_info.to_vec();
-    }
+        raw_info.to_vec()
+    };
 
     decode_block_info(&decompressed, version, encoding)
 }

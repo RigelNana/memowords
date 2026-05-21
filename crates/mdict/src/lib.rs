@@ -8,6 +8,7 @@
 pub mod checksum;
 pub mod decompress;
 pub mod decrypt;
+pub mod dict;
 pub mod error;
 pub mod header;
 pub mod key_block;
@@ -18,6 +19,7 @@ pub mod record_block;
 pub mod stylesheet;
 pub mod types;
 
+pub use dict::MdxDict;
 pub use error::Error;
 pub use types::{HeaderInfo, Version};
 

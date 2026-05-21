@@ -33,7 +33,7 @@ pub fn decrypt_key_block_info(buffer: &mut [u8]) -> crate::Result<()> {
 
     for (i, byte) in data.iter_mut().enumerate() {
         let original = *byte;
-        let rotated = (original >> 4) | (original << 4);
+        let rotated = original.rotate_left(4);
         *byte = rotated ^ prev ^ (i as u8) ^ key[i % 16];
         prev = original;
     }
