@@ -101,7 +101,7 @@ Result::is_ok()
 // With get - returns Option or does lookup
 Vec::get(index)
 HashMap::get(key)
-BTreeMap::get(key)
+::get(key)
 ```
 
 ## Pattern: Getter/Setter Pairs
