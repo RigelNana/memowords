@@ -72,6 +72,11 @@ body {
   min-height: 100vh;
 }
 
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
