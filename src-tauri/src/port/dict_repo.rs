@@ -1,14 +1,18 @@
 use anyhow::Result;
+use async_trait::async_trait;
 
-use crate::domain::dictionary::{DictGroup, DictMeta};
+use crate::domain::dictionary::{DictGroup, DictId, DictMeta, GroupId};
 
+/// Dictionary repository port — persistence for dictionary metadata and groups.
+#[async_trait]
 pub trait DictRepo: Send + Sync {
-    fn list_dicts(&self) -> Result<Vec<DictMeta>>;
-    fn get_dict(&self, id: &str) -> Result<Option<DictMeta>>;
-    fn save_dict(&self, meta: &DictMeta) -> Result<()>;
-    fn remove_dict(&self, id: &str) -> Result<()>;
+    async fn list_dicts(&self) -> Result<Vec<DictMeta>>;
+    async fn get_dict(&self, id: &DictId) -> Result<Option<DictMeta>>;
+    async fn save_dict(&self, meta: &DictMeta) -> Result<()>;
+    async fn remove_dict(&self, id: &DictId) -> Result<()>;
 
-    fn list_groups(&self) -> Result<Vec<DictGroup>>;
-    fn save_group(&self, group: &DictGroup) -> Result<()>;
-    fn remove_group(&self, id: &str) -> Result<()>;
+    async fn list_groups(&self) -> Result<Vec<DictGroup>>;
+    async fn get_group(&self, id: &GroupId) -> Result<Option<DictGroup>>;
+    async fn save_group(&self, group: &DictGroup) -> Result<()>;
+    async fn remove_group(&self, id: &GroupId) -> Result<()>;
 }
