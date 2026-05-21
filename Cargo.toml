@@ -15,4 +15,11 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 thiserror = "2"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+tracing-appender = "0.2"
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
+jiff = "0.2"
+parking_lot = "0.12"
+dashmap = "6"
+uuid = { version = "1", features = ["v4"] }
+dirs = "6"

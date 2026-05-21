@@ -39,5 +39,8 @@ coverage/
 lcov.info
 tarpaulin-report.html
 
+# Test fixtures (large binary dict files)
+crates/mdict/tests/fixtures/
+
 # Reference files (not part of the project)
 ref/
