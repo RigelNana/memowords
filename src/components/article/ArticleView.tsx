@@ -61,6 +61,7 @@ export function ArticleView() {
             key={`${article.dict_name}-${i}`}
             id={`dict-section-${i}`}
             dictName={article.dict_name}
+            dictId={article.dict_id["0"]}
             html={article.html}
           />
         ))}

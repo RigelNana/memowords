@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { ArticleFrame } from "./ArticleFrame";
 
 interface DictSectionProps {
   dictName: string;
+  dictId: string;
   html: string;
   id?: string;
 }
 
-export function DictSection({ dictName, html, id }: DictSectionProps) {
+export function DictSection({ dictName, dictId, html, id }: DictSectionProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -41,11 +43,9 @@ export function DictSection({ dictName, html, id }: DictSectionProps) {
         }}
       >
         <div className="overflow-hidden">
-          <div
-            className="px-5 py-4"
-            dangerouslySetInnerHTML={{ __html: html }}
-            style={{ maxWidth: "75ch" }}
-          />
+          <div className="px-5 py-4">
+            <ArticleFrame html={html} dictId={dictId} />
+          </div>
         </div>
       </div>
     </section>
