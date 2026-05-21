@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
-import { Search, BookOpen, History, Settings, ChevronLeft } from "lucide-react";
+import { Search, BookOpen, History, Settings, ChevronLeft, BookMarked } from "lucide-react";
+import { useUiStore } from "../../stores/uiStore";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -9,11 +10,14 @@ interface SidebarProps {
 const navItems = [
   { to: "/", icon: Search, label: "Lookup" },
   { to: "/review", icon: BookOpen, label: "Review" },
+  { to: "/wordbooks", icon: BookMarked, label: "Word Books" },
   { to: "/history", icon: History, label: "History" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ] as const;
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+  const openCommandPalette = useUiStore((s) => s.openCommandPalette);
+
   return (
     <aside
       className="flex h-full flex-col border-r border-border bg-surface-raised"
@@ -31,6 +35,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </span>
         )}
       </div>
+
+      {/* Search trigger */}
+      <button
+        onClick={openCommandPalette}
+        className="mx-2 mt-2 flex h-10 items-center gap-3 rounded-[var(--radius-sm)] bg-surface-sunken px-3 text-sm text-text-tertiary transition-colors duration-[var(--duration-fast)] hover:bg-surface-base"
+      >
+        <Search size={16} />
+        {!collapsed && (
+          <>
+            <span className="flex-1 text-left">Search...</span>
+            <kbd className="rounded border border-border bg-surface-base px-1.5 py-0.5 text-[10px] font-medium">
+              ⌘K
+            </kbd>
+          </>
+        )}
+      </button>
 
       {/* Navigation */}
       <nav className="mt-2 flex flex-1 flex-col gap-0.5 px-2">
