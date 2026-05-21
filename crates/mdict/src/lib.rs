@@ -6,6 +6,8 @@
 //! RIPEMD128 decryption, and multiple encodings (UTF-8, UTF-16LE, GBK, GB18030).
 
 pub mod checksum;
+pub mod decompress;
+pub mod decrypt;
 pub mod error;
 pub mod header;
 pub mod number;
