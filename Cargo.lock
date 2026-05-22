@@ -2415,6 +2415,7 @@ dependencies = [
  "jiff",
  "mdict",
  "parking_lot",
+ "percent-encoding",
  "serde",
  "serde_json",
  "sqlx",

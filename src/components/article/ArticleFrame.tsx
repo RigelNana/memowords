@@ -10,6 +10,29 @@ interface ArticleFrameProps {
   className?: string;
 }
 
+// MIME type lookup by file extension
+function guessMime(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+    svg: "image/svg+xml", webp: "image/webp", bmp: "image/bmp", ico: "image/x-icon",
+    tif: "image/tiff", tiff: "image/tiff",
+    css: "text/css", js: "application/javascript",
+    mp3: "audio/mpeg", ogg: "audio/ogg", wav: "audio/wav", spx: "audio/x-speex",
+    woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", eot: "application/vnd.ms-fontobject",
+  };
+  return map[ext] || "application/octet-stream";
+}
+
+// Convert Uint8Array to base64 string
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
 const BASE_STYLES = `
 <style>
   :root {
@@ -57,60 +80,65 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
   // Detect if article HTML itself contains <script> tags
   const hasScripts = /<script[\s>]/i.test(html) || !!customJs;
 
-  // Async HTML processing: rewrite URLs + inline external scripts from MDD
+  // Async HTML processing: inline all resources as data URIs.
+  // srcDoc iframes cannot load custom-protocol URLs (mdict://),
+  // so we fetch every resource via Tauri IPC and embed inline.
   const processHtml = useCallback(
     async (rawHtml: string): Promise<string> => {
       let processed = rawHtml;
 
-      // Rewrite img src
-      processed = processed.replace(
-        /(<img[^>]+src=")(?!https?:\/\/|data:|mdict:\/\/)([^"]+)(")/gi,
-        `$1mdict://${dictId}/$2$3`,
-      );
+      // Rewrite sound:// to a relative path (will be inlined below)
+      processed = processed.replace(/sound:\/\//gi, "");
 
-      // Rewrite link href (CSS)
-      processed = processed.replace(
-        /(<link[^>]+href=")(?!https?:\/\/|data:|mdict:\/\/)([^"]+)(")/gi,
-        `$1mdict://${dictId}/$2$3`,
-      );
-
-      // Rewrite sound:// to mdict://
-      processed = processed.replace(
-        /sound:\/\//gi,
-        `mdict://${dictId}/`,
-      );
-
-      // Inline external <script src="..."> from MDD/local (GoldenDict approach)
-      // srcDoc iframes can't reliably load custom-protocol scripts, so inline them
-      const scriptSrcRe = /<script([^>]*)\ssrc=["'](?!https?:\/\/|data:)([^"']+)["']([^>]*)>(\s*<\/script>)?/gi;
-      const scriptMatches = [...processed.matchAll(scriptSrcRe)];
-      for (const match of scriptMatches) {
-        const srcPath = match[2];
+      // ── Helper: load resource and encode as data URI ──
+      async function toDataUri(resourcePath: string): Promise<string | null> {
         try {
-          const data = await api.getResource(dictId, srcPath);
-          if (data) {
-            const jsText = new TextDecoder().decode(new Uint8Array(data));
-            processed = processed.replace(match[0], `<script>${jsText}<\/script>`);
-          }
+          const data = await api.getResource(dictId, resourcePath);
+          if (!data) return null;
+          const bytes = new Uint8Array(data);
+          const mime = guessMime(resourcePath);
+          const base64 = uint8ToBase64(bytes);
+          return `data:${mime};base64,${base64}`;
         } catch {
-          // Script load failed — remove the broken tag
-          processed = processed.replace(match[0], `<!-- failed to load: ${srcPath} -->`);
+          return null;
         }
       }
 
-      // Inline external <link rel="stylesheet" href="..."> from MDD/local
-      const linkCssRe = /<link[^>]+rel=["']stylesheet["'][^>]+href=["']mdict:\/\/[^/]+\/([^"']+)["'][^>]*\/?>/gi;
-      const cssMatches = [...processed.matchAll(linkCssRe)];
-      for (const match of cssMatches) {
-        const cssPath = match[1];
+      // ── Inline <img src="..."> ──
+      const imgRe = /(<img[^>]+src=["'])(?!https?:\/\/|data:)([^"']+)(["'])/gi;
+      const imgMatches = [...processed.matchAll(imgRe)];
+      for (const m of imgMatches) {
+        const uri = await toDataUri(m[2]);
+        if (uri) {
+          processed = processed.replace(m[0], `${m[1]}${uri}${m[3]}`);
+        }
+      }
+
+      // ── Inline <link rel="stylesheet" href="..."> ──
+      const linkRe = /<link[^>]+rel=["']stylesheet["'][^>]+href=["'](?!https?:\/\/|data:)([^"']+)["'][^>]*\/?>/gi;
+      const linkMatches = [...processed.matchAll(linkRe)];
+      for (const m of linkMatches) {
         try {
-          const data = await api.getResource(dictId, cssPath);
+          const data = await api.getResource(dictId, m[1]);
           if (data) {
             const cssText = new TextDecoder().decode(new Uint8Array(data));
-            processed = processed.replace(match[0], `<style>${cssText}</style>`);
+            processed = processed.replace(m[0], `<style>${cssText}</style>`);
+          }
+        } catch { /* skip */ }
+      }
+
+      // ── Inline <script src="..."> ──
+      const scriptRe = /<script([^>]*)\ssrc=["'](?!https?:\/\/|data:)([^"']+)["']([^>]*)>(\s*<\/script>)?/gi;
+      const scriptMatches = [...processed.matchAll(scriptRe)];
+      for (const m of scriptMatches) {
+        try {
+          const data = await api.getResource(dictId, m[2]);
+          if (data) {
+            const jsText = new TextDecoder().decode(new Uint8Array(data));
+            processed = processed.replace(m[0], `<script>${jsText}<\/script>`);
           }
         } catch {
-          // CSS load failed — keep original (protocol handler may still work)
+          processed = processed.replace(m[0], `<!-- failed: ${m[2]} -->`);
         }
       }
 
@@ -130,6 +158,7 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
     });
     return () => { cancelled = true; };
   }, [html, processHtml]);
+
 
   // Handle link clicks inside iframe (entry:// protocol)
   useEffect(() => {

@@ -50,9 +50,14 @@ pub fn run() {
             let path_str = url.path();
             let host = url.host().unwrap_or_default();
 
-            // host = dict_id, path = /resource_path
+            // host = dict_id, path = /resource_path (may be percent-encoded)
             let dict_id_str = host.to_string();
-            let resource_path = path_str.strip_prefix('/').unwrap_or(path_str).to_string();
+            let raw_path = path_str.strip_prefix('/').unwrap_or(path_str);
+            // Decode percent-encoding: %20 → space, %E4%B8%AD → 中, etc.
+            let resource_path = percent_encoding::percent_decode_str(raw_path)
+                .decode_utf8()
+                .unwrap_or_else(|_| raw_path.into())
+                .into_owned();
 
             tracing::debug!(dict_id = %dict_id_str, path = %resource_path, url = %url, "mdict:// resource request");
 
