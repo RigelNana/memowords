@@ -9,6 +9,7 @@ use tauri::Manager;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use app::state::AppState;
+use domain::dictionary::DictId;
 use port::dict_repo::DictRepo;
 use port::search_engine::SearchEngine;
 
@@ -42,6 +43,46 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .register_uri_scheme_protocol("mdict", |ctx, request| {
+            // URL format: mdict://{dict_id}/{resource_path}
+            let url = request.uri();
+            let path_str = url.path();
+            let host = url.host().unwrap_or_default();
+
+            // host = dict_id, path = /resource_path
+            let dict_id_str = host.to_string();
+            let resource_path = path_str.strip_prefix('/').unwrap_or(path_str).to_string();
+
+            tracing::debug!(dict_id = %dict_id_str, path = %resource_path, "mdict:// resource request");
+
+            let state = ctx.app_handle().state::<AppState>();
+            let engine = state.search_engine.clone();
+            let dict_id = DictId(dict_id_str);
+
+            match engine.load_resource(&dict_id, &resource_path) {
+                Ok(Some(resource)) => {
+                    tauri::http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", &resource.mime_type)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(resource.data)
+                        .unwrap()
+                }
+                Ok(None) => {
+                    tauri::http::Response::builder()
+                        .status(404)
+                        .body(b"Not Found".to_vec())
+                        .unwrap()
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "mdict:// resource load failed");
+                    tauri::http::Response::builder()
+                        .status(500)
+                        .body(format!("Error: {e}").into_bytes())
+                        .unwrap()
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             app::commands::scan_dicts,
             app::commands::import_dict,
