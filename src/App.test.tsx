@@ -5,6 +5,8 @@ import { App } from "./App";
 describe("App", () => {
   it("renders without crashing", () => {
     render(<App />);
-    expect(screen.getByText("MemoWords")).toBeInTheDocument();
+    expect(
+      screen.getByText("Type a word to look it up"),
+    ).toBeInTheDocument();
   });
 });
