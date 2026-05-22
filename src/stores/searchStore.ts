@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { DictArticle, SearchCandidate } from "../types";
 import { api } from "../lib/tauri";
+import { useHistoryStore } from "./historyStore";
 
 interface SearchState {
   // Search
@@ -79,6 +80,12 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     try {
       const articles = await api.lookup(word, groupId);
       set({ articles, isLoadingArticles: false });
+
+      // Record in history
+      if (articles.length > 0) {
+        const dictNames = articles.map((a) => a.dict_name);
+        useHistoryStore.getState().addEntry(word, dictNames);
+      }
     } catch (e) {
       console.error("lookup failed:", e);
       set({ articles: [], isLoadingArticles: false });
