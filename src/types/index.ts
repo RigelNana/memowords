@@ -33,6 +33,34 @@ export interface DictArticle {
 export type DictId = { "0": string };
 export type GroupId = { "0": string };
 
+export type DarkModeStrategy = "auto" | "invert" | "custom_css" | "off";
+
+export interface DictConfig {
+  dict_id: DictId;
+  display_name: string | null;
+  priority: number;
+  dark_mode: DarkModeStrategy;
+  custom_css: string;
+  custom_js: string;
+  js_enabled: boolean;
+}
+
+export interface DictConfigUpdate {
+  display_name?: string | null;
+  priority?: number;
+  dark_mode?: DarkModeStrategy;
+  custom_css?: string;
+  custom_js?: string;
+  js_enabled?: boolean;
+}
+
+export interface DictFileInfo {
+  file_size: number;
+  mdd_file_size: number | null;
+  imported_at: string;
+  last_indexed_at: string | null;
+}
+
 // Helpers to extract raw string from newtype wrappers
 export function dictIdStr(id: DictId): string {
   return id["0"];

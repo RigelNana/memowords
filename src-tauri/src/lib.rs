@@ -104,8 +104,7 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir).ok();
 
             let db_path = data_dir.join("memowords.db");
-            let rt = tokio::runtime::Handle::current();
-            let pool = rt.block_on(infra::db::create_pool(&db_path))
+            let pool = tauri::async_runtime::block_on(infra::db::create_pool(&db_path))
                 .expect("failed to create database pool");
 
             let state = AppState::new(pool);

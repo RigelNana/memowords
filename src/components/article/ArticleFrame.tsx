@@ -4,6 +4,8 @@ import { useSearchStore } from "../../stores/searchStore";
 interface ArticleFrameProps {
   html: string;
   dictId: string;
+  customCss?: string;
+  customJs?: string;
   className?: string;
 }
 
@@ -45,7 +47,7 @@ const BASE_STYLES = `
 </style>
 `;
 
-export function ArticleFrame({ html, dictId, className }: ArticleFrameProps) {
+export function ArticleFrame({ html, dictId, customCss, customJs, className }: ArticleFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const lookup = useSearchStore((s) => s.lookup);
 
@@ -72,9 +74,12 @@ export function ArticleFrame({ html, dictId, className }: ArticleFrameProps) {
         `mdict://${dictId}/`,
       );
 
-      return `<!DOCTYPE html><html><head>${BASE_STYLES}</head><body>${processed}</body></html>`;
+      const customStyle = customCss ? `<style>${customCss}</style>` : "";
+      const customScript = customJs ? `<script>${customJs}<\/script>` : "";
+
+      return `<!DOCTYPE html><html><head>${BASE_STYLES}${customStyle}</head><body>${processed}${customScript}</body></html>`;
     },
-    [dictId],
+    [dictId, customCss, customJs],
   );
 
   // Handle link clicks inside iframe (entry:// protocol)
@@ -147,7 +152,7 @@ export function ArticleFrame({ html, dictId, className }: ArticleFrameProps) {
     <iframe
       ref={iframeRef}
       srcDoc={processHtml(html)}
-      sandbox="allow-same-origin"
+      sandbox={customJs ? "allow-same-origin allow-scripts" : "allow-same-origin"}
       className={`w-full border-0 ${className ?? ""}`}
       style={{ minHeight: 60 }}
       title="Dictionary article"

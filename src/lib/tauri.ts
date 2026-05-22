@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   DictArticle,
+  DictConfig,
+  DictConfigUpdate,
+  DictFileInfo,
   DictGroup,
   DictMeta,
   SearchCandidate,
@@ -40,4 +43,19 @@ export const api = {
     invoke<void>("update_group", { id, name, dictIds }),
 
   deleteGroup: (id: string) => invoke<void>("delete_group", { id }),
+
+  // Dict config
+  getDictConfig: (dictId: string) =>
+    invoke<DictConfig>("get_dict_config", { dictId }),
+
+  updateDictConfig: (dictId: string, config: DictConfigUpdate) =>
+    invoke<void>("update_dict_config", { dictId, config }),
+
+  getDictFileInfo: (dictId: string) =>
+    invoke<DictFileInfo>("get_dict_file_info", { dictId }),
+
+  rebuildDictIndex: (dictId: string) =>
+    invoke<void>("rebuild_dict_index", { dictId }),
+
+  rebuildAllIndexes: () => invoke<void>("rebuild_all_indexes"),
 };
