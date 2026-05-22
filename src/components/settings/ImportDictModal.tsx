@@ -48,12 +48,12 @@ export function ImportDictModal({ onClose, onDone }: ImportDictModalProps) {
 
   // Single mode
   const [mdxPath, setMdxPath] = useState("");
-  const [cssPath, setCssPath] = useState("");
-  const [jsPath, setJsPath] = useState("");
+  const [cssPaths, setCssPaths] = useState<string[]>([]);
+  const [jsPaths, setJsPaths] = useState<string[]>([]);
   const [customCss] = useState("");
   const [customJs] = useState("");
-  const [detectedCss, setDetectedCss] = useState("");
-  const [detectedJs, setDetectedJs] = useState("");
+  const [detectedCss, setDetectedCss] = useState<string[]>([]);
+  const [detectedJs, setDetectedJs] = useState<string[]>([]);
   const [detectedMdd, setDetectedMdd] = useState<string[]>([]);
 
   // Import progress
@@ -108,13 +108,13 @@ export function ImportDictModal({ onClose, onDone }: ImportDictModalProps) {
       // Auto-detect CSS/JS via backend (checks file existence)
       try {
         const resources = await api.detectDictResources(selected);
-        if (resources.css_path) {
-          setCssPath(resources.css_path);
-          setDetectedCss(resources.css_path);
+        if (resources.css_paths.length > 0) {
+          setCssPaths(resources.css_paths);
+          setDetectedCss(resources.css_paths);
         }
-        if (resources.js_path) {
-          setJsPath(resources.js_path);
-          setDetectedJs(resources.js_path);
+        if (resources.js_paths.length > 0) {
+          setJsPaths(resources.js_paths);
+          setDetectedJs(resources.js_paths);
         }
         if (resources.mdd_paths.length > 0) {
           setDetectedMdd(resources.mdd_paths);
@@ -125,17 +125,6 @@ export function ImportDictModal({ onClose, onDone }: ImportDictModalProps) {
       setStep("single-config");
     }
   }, []);
-
-  const handleBrowseFile = useCallback(
-    async (
-      setter: (v: string) => void,
-      filters?: { name: string; extensions: string[] }[],
-    ) => {
-      const selected = await open({ directory: false, multiple: false, filters });
-      if (selected && typeof selected === "string") setter(selected);
-    },
-    [],
-  );
 
   // ── Import execution ─────────────────────────────────────
 
@@ -169,14 +158,14 @@ export function ImportDictModal({ onClose, onDone }: ImportDictModalProps) {
         const meta = await api.importDict(toImport[i].path);
         // Apply CSS/JS config for single-file import
         if (step === "single-config" && i === 0) {
-          const hasCfg = cssPath || jsPath || customCss || customJs;
+          const hasCfg = cssPaths.length > 0 || jsPaths.length > 0 || customCss || customJs;
           if (hasCfg) {
             await api.updateDictConfig(meta.id, {
-              css_path: cssPath || undefined,
-              js_path: jsPath || undefined,
+              css_paths: cssPaths.length > 0 ? cssPaths : undefined,
+              js_paths: jsPaths.length > 0 ? jsPaths : undefined,
               custom_css: customCss || undefined,
               custom_js: customJs || undefined,
-              js_enabled: (customJs.length > 0 || !!jsPath) ? true : undefined,
+              js_enabled: (customJs.length > 0 || jsPaths.length > 0) ? true : undefined,
             });
           }
         }
@@ -192,7 +181,7 @@ export function ImportDictModal({ onClose, onDone }: ImportDictModalProps) {
       }
     }
     setStep("done");
-  }, [step, files, mdxPath, cssPath, jsPath, customCss, customJs]);
+  }, [step, files, mdxPath, cssPaths, jsPaths, customCss, customJs]);
 
   const selectedCount = files.filter((f) => f.selected).length;
 
@@ -314,24 +303,30 @@ export function ImportDictModal({ onClose, onDone }: ImportDictModalProps) {
                 </div>
               </div>
 
-              {/* CSS path */}
+              {/* CSS paths */}
               <div>
                 <label className="mb-1 block text-xs font-medium text-text-secondary">
-                  CSS File
-                  {detectedCss && (
+                  CSS Files
+                  {detectedCss.length > 0 && (
                     <span className="ml-1.5 font-normal text-text-tertiary">(auto-detected)</span>
                   )}
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={cssPath}
-                    onChange={(e) => setCssPath(e.target.value)}
-                    placeholder="Optional — path to .css file"
+                    value={cssPaths.join("; ")}
+                    onChange={(e) => setCssPaths(e.target.value.split(";").map(s => s.trim()).filter(Boolean))}
+                    placeholder="Optional — paths to .css files (semicolon-separated)"
                     className="h-8 flex-1 rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-accent"
                   />
                   <button
-                    onClick={() => handleBrowseFile(setCssPath, [{ name: "CSS", extensions: ["css"] }])}
+                    onClick={async () => {
+                      const selected = await open({ directory: false, multiple: true, filters: [{ name: "CSS", extensions: ["css"] }] });
+                      if (selected) {
+                        const paths = Array.isArray(selected) ? selected : [selected];
+                        setCssPaths(prev => [...new Set([...prev, ...paths])]);
+                      }
+                    }}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-border text-text-tertiary hover:bg-surface-sunken"
                   >
                     <FolderOpen size={12} />
@@ -339,24 +334,30 @@ export function ImportDictModal({ onClose, onDone }: ImportDictModalProps) {
                 </div>
               </div>
 
-              {/* JS path */}
+              {/* JS paths */}
               <div>
                 <label className="mb-1 block text-xs font-medium text-text-secondary">
-                  JS File
-                  {detectedJs && (
+                  JS Files
+                  {detectedJs.length > 0 && (
                     <span className="ml-1.5 font-normal text-text-tertiary">(auto-detected)</span>
                   )}
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={jsPath}
-                    onChange={(e) => setJsPath(e.target.value)}
-                    placeholder="Optional — path to .js file"
+                    value={jsPaths.join("; ")}
+                    onChange={(e) => setJsPaths(e.target.value.split(";").map(s => s.trim()).filter(Boolean))}
+                    placeholder="Optional — paths to .js files (semicolon-separated)"
                     className="h-8 flex-1 rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-accent"
                   />
                   <button
-                    onClick={() => handleBrowseFile(setJsPath, [{ name: "JavaScript", extensions: ["js"] }])}
+                    onClick={async () => {
+                      const selected = await open({ directory: false, multiple: true, filters: [{ name: "JavaScript", extensions: ["js"] }] });
+                      if (selected) {
+                        const paths = Array.isArray(selected) ? selected : [selected];
+                        setJsPaths(prev => [...new Set([...prev, ...paths])]);
+                      }
+                    }}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-border text-text-tertiary hover:bg-surface-sunken"
                   >
                     <FolderOpen size={12} />

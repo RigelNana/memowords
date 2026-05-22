@@ -284,13 +284,48 @@ impl MddFile {
     /// Returns raw bytes if found.
     pub fn lookup(&self, normalized_path: &str) -> Option<Vec<u8>> {
         let indices = self.index.get(normalized_path);
+        tracing::debug!(
+            path = %normalized_path,
+            matches = indices.len(),
+            "MDD lookup: index query"
+        );
         if indices.is_empty() {
             return None;
         }
         // Use first match
         let idx = indices[0];
         let info = self.record_infos.get(idx)?;
-        extract_record_bytes(&self.mmap, info).ok()
+        tracing::debug!(
+            path = %normalized_path,
+            entry_idx = idx,
+            block_pos = info.compressed_block_pos,
+            record_offset = info.record_offset,
+            record_size = info.record_size,
+            compressed_block_size = info.compressed_block_size,
+            decompressed_block_size = info.decompressed_block_size,
+            "MDD lookup: record info"
+        );
+        match extract_record_bytes(&self.mmap, info) {
+            Ok(data) => {
+                let head: Vec<u8> = data.iter().take(16).copied().collect();
+                tracing::debug!(
+                    path = %normalized_path,
+                    data_len = data.len(),
+                    head_hex = %format!("{:02x?}", head),
+                    "MDD lookup: extracted OK"
+                );
+                Some(data)
+            }
+            Err(e) => {
+                tracing::error!(
+                    path = %normalized_path,
+                    error = %e,
+                    entry_idx = idx,
+                    "MDD lookup: extract_record_bytes FAILED"
+                );
+                None
+            }
+        }
     }
 
     /// Number of resource entries in this MDD file.

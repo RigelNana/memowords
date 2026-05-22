@@ -21,33 +21,39 @@ export function DictSection({ dictName, dictId, html, id }: DictSectionProps) {
       try {
         const config = await api.getDictConfig(dictId);
 
-        // Load CSS from file path if configured
-        if (config.css_path) {
-          try {
-            const cssData = await api.getResource(dictId, config.css_path);
-            if (cssData) {
-              const cssText = new TextDecoder().decode(new Uint8Array(cssData));
-              if (!cancelled) setCustomCss(cssText);
+        // Load CSS from file paths if configured
+        if (config.css_paths.length > 0) {
+          const parts: string[] = [];
+          for (const p of config.css_paths) {
+            try {
+              const cssData = await api.getResource(dictId, p);
+              if (cssData) {
+                parts.push(new TextDecoder().decode(new Uint8Array(cssData)));
+              }
+            } catch (e) {
+              // CSS file load failed — skip silently
             }
-          } catch (e) {
-            // CSS file load failed — skip silently
           }
+          if (parts.length > 0 && !cancelled) setCustomCss(parts.join("\n"));
         } else if (config.custom_css) {
           if (!cancelled) setCustomCss(config.custom_css);
         }
 
         // Load JS if enabled
         if (config.js_enabled) {
-          if (config.js_path) {
-            try {
-              const jsData = await api.getResource(dictId, config.js_path);
-              if (jsData) {
-                const jsText = new TextDecoder().decode(new Uint8Array(jsData));
-                if (!cancelled) setCustomJs(jsText);
+          if (config.js_paths.length > 0) {
+            const parts: string[] = [];
+            for (const p of config.js_paths) {
+              try {
+                const jsData = await api.getResource(dictId, p);
+                if (jsData) {
+                  parts.push(new TextDecoder().decode(new Uint8Array(jsData)));
+                }
+              } catch (e) {
+                // JS file load failed — skip silently
               }
-            } catch (e) {
-              // JS file load failed — skip silently
             }
+            if (parts.length > 0 && !cancelled) setCustomJs(parts.join("\n"));
           } else if (config.custom_js) {
             if (!cancelled) setCustomJs(config.custom_js);
           }

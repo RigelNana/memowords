@@ -59,20 +59,20 @@ pub async fn detect_dict_resources(mdx_path: String) -> CmdResult<DetectedResour
         dir.join("article-script.js"),
     ];
 
-    let css_path = candidates_css.iter().find(|p| p.is_file()).map(|p| p.display().to_string());
-    let js_path = candidates_js.iter().find(|p| p.is_file()).map(|p| p.display().to_string());
+    let css_paths: Vec<String> = candidates_css.iter().filter(|p| p.is_file()).map(|p| p.display().to_string()).collect();
+    let js_paths: Vec<String> = candidates_js.iter().filter(|p| p.is_file()).map(|p| p.display().to_string()).collect();
     let mdd_paths: Vec<String> = find_mdd_files(&path)
         .iter()
         .map(|p| p.display().to_string())
         .collect();
 
-    Ok(DetectedResources { css_path, js_path, mdd_paths })
+    Ok(DetectedResources { css_paths, js_paths, mdd_paths })
 }
 
 #[derive(Debug, Serialize)]
 pub struct DetectedResources {
-    pub css_path: Option<String>,
-    pub js_path: Option<String>,
+    pub css_paths: Vec<String>,
+    pub js_paths: Vec<String>,
     pub mdd_paths: Vec<String>,
 }
 

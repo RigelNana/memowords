@@ -10,21 +10,20 @@ interface ArticleFrameProps {
   className?: string;
 }
 
-// MIME type lookup by file extension
-function guessMime(path: string): string {
+function guessMimeType(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   const map: Record<string, string> = {
     png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
     svg: "image/svg+xml", webp: "image/webp", bmp: "image/bmp", ico: "image/x-icon",
     tif: "image/tiff", tiff: "image/tiff",
     css: "text/css", js: "application/javascript",
-    mp3: "audio/mpeg", ogg: "audio/ogg", wav: "audio/wav", spx: "audio/x-speex",
+    mp3: "audio/mpeg", ogg: "audio/ogg", wav: "audio/wav", aac: "audio/aac",
+    spx: "audio/ogg",
     woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", eot: "application/vnd.ms-fontobject",
   };
-  return map[ext] || "application/octet-stream";
+  return map[ext] ?? "application/octet-stream";
 }
 
-// Convert Uint8Array to base64 string
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) {
@@ -77,9 +76,6 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
   const lookup = useSearchStore((s) => s.lookup);
   const [processedDoc, setProcessedDoc] = useState<string>("");
 
-  // Detect if article HTML itself contains <script> tags
-  const hasScripts = /<script[\s>]/i.test(html) || !!customJs;
-
   // Async HTML processing: inline all resources as data URIs.
   // srcDoc iframes cannot load custom-protocol URLs (mdict://),
   // so we fetch every resource via Tauri IPC and embed inline.
@@ -87,58 +83,127 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
     async (rawHtml: string): Promise<string> => {
       let processed = rawHtml;
 
-      // Rewrite sound:// to a relative path (will be inlined below)
-      processed = processed.replace(/sound:\/\//gi, "");
+      // Rewrite link href (CSS) to mdict:// (will be inlined below)
+      processed = processed.replace(
+        /(<link[^>]+href=")(?!https?:\/\/|data:|mdict:\/\/)([^"]+)(")/gi,
+        `$1mdict://${dictId}/$2$3`,
+      );
 
-      // ── Helper: load resource and encode as data URI ──
-      async function toDataUri(resourcePath: string): Promise<string | null> {
-        try {
-          const data = await api.getResource(dictId, resourcePath);
-          if (!data) return null;
-          const bytes = new Uint8Array(data);
-          const mime = guessMime(resourcePath);
-          const base64 = uint8ToBase64(bytes);
-          return `data:${mime};base64,${base64}`;
-        } catch {
-          return null;
-        }
-      }
+      // Map data-src-mp3 / data-src-ogg to data-audio-src (used by OALD, LDOCE, etc.)
+      processed = processed.replace(
+        /<a\b([^>]*)\bdata-src-mp3=["']([^"']+)["']([^>]*)>/gi,
+        (full, before, mp3Path, after) => {
+          const cleanPath = mp3Path.replace(/^\//, "");
+          if (full.includes("data-audio-src")) return full;
+          return `<a${before}data-src-mp3="${mp3Path}" data-audio-src="${cleanPath}"${after}>`;
+        },
+      );
 
-      // ── Inline <img src="..."> ──
-      const imgRe = /(<img[^>]+src=["'])(?!https?:\/\/|data:)([^"']+)(["'])/gi;
-      const imgMatches = [...processed.matchAll(imgRe)];
-      for (const m of imgMatches) {
-        const uri = await toDataUri(m[2]);
-        if (uri) {
-          processed = processed.replace(m[0], `${m[1]}${uri}${m[3]}`);
-        }
-      }
-
-      // ── Inline <link rel="stylesheet" href="..."> ──
-      const linkRe = /<link[^>]+rel=["']stylesheet["'][^>]+href=["'](?!https?:\/\/|data:)([^"']+)["'][^>]*\/?>/gi;
-      const linkMatches = [...processed.matchAll(linkRe)];
-      for (const m of linkMatches) {
-        try {
-          const data = await api.getResource(dictId, m[1]);
-          if (data) {
-            const cssText = new TextDecoder().decode(new Uint8Array(data));
-            processed = processed.replace(m[0], `<style>${cssText}</style>`);
+      // Rewrite sound:// links to data-audio-src (avoids sandbox blocking mdict:// navigation)
+      const audioLinkExts = /\.(mp3|ogg|wav|aac|spx)$/i;
+      processed = processed.replace(
+        /(<a\b[^>]*)\bhref=["']sound:\/\/([^"']+)["']/gi,
+        (full, before, path) => {
+          if (audioLinkExts.test(path)) {
+            return `${before}href="javascript:void(0)" data-audio-src="${path}" onclick="return false"`;
           }
-        } catch { /* skip */ }
-      }
+          return full;
+        },
+      );
+      // mdict:// audio in href → data-audio-src
+      processed = processed.replace(
+        /(<a\b[^>]*)\bhref=["']mdict:\/\/[^/]+\/([^"']+)["']/gi,
+        (full, before, path) => {
+          if (audioLinkExts.test(path)) {
+            return `${before}href="javascript:void(0)" data-audio-src="${path}" onclick="return false"`;
+          }
+          return full;
+        },
+      );
+      // Rewrite sound:// in img src to mdict://
+      processed = processed.replace(
+        /(<img[^>]+src=["'])sound:\/\/([^"']+)(["'])/gi,
+        `$1mdict://${dictId}/$2$3`,
+      );
 
-      // ── Inline <script src="..."> ──
-      const scriptRe = /<script([^>]*)\ssrc=["'](?!https?:\/\/|data:)([^"']+)["']([^>]*)>(\s*<\/script>)?/gi;
-      const scriptMatches = [...processed.matchAll(scriptRe)];
-      for (const m of scriptMatches) {
+      // Inline external <script src="..."> from MDD/local
+      const scriptSrcRe = /<script([^>]*)\ssrc=["'](?!https?:\/\/|data:)([^"']+)["']([^>]*)>(\s*<\/script>)?/gi;
+      const scriptMatches = [...processed.matchAll(scriptSrcRe)];
+      for (const match of scriptMatches) {
+        const srcPath = match[2];
         try {
-          const data = await api.getResource(dictId, m[2]);
+          const data = await api.getResource(dictId, srcPath);
           if (data) {
             const jsText = new TextDecoder().decode(new Uint8Array(data));
-            processed = processed.replace(m[0], `<script>${jsText}<\/script>`);
+            processed = processed.replace(match[0], `<script>${jsText}<\/script>`);
+          } else {
+            processed = processed.replace(match[0], `<!-- not found: ${srcPath} -->`);
           }
         } catch {
-          processed = processed.replace(m[0], `<!-- failed: ${m[2]} -->`);
+          processed = processed.replace(match[0], `<!-- failed to load: ${srcPath} -->`);
+        }
+      }
+
+      // Inline external <link stylesheet> from MDD/local (handles both attr orders)
+      const linkCssRe = /<link[^>]*(?:rel=["']stylesheet["'][^>]*href=["']mdict:\/\/[^/]+\/([^"']+)["']|href=["']mdict:\/\/[^/]+\/([^"']+)["'][^>]*rel=["']stylesheet["'])[^>]*\/?>/gi;
+      const cssMatches = [...processed.matchAll(linkCssRe)];
+      for (const match of cssMatches) {
+        const cssPath = match[1] || match[2];
+        try {
+          const data = await api.getResource(dictId, cssPath);
+          if (data) {
+            const cssText = new TextDecoder().decode(new Uint8Array(data));
+            processed = processed.replace(match[0], `<style>${cssText}</style>`);
+          } else {
+            processed = processed.replace(match[0], `<!-- css not found: ${cssPath} -->`);
+          }
+        } catch {
+          processed = processed.replace(match[0], `<!-- css failed: ${cssPath} -->`);
+        }
+      }
+
+      // Remove any remaining <link> with mdict:// href (can't load in srcDoc)
+      processed = processed.replace(/<link[^>]+href=["']mdict:\/\/[^"']+["'][^>]*\/?>/gi, "");
+
+      // Inline images as data: URLs
+      const imgSrcRe = /<img([^>]*)\ssrc=["'](?:mdict:\/\/[^/]+\/|(?!https?:\/\/|data:))([^"']+)["']([^>]*)>/gi;
+      const imgMatches = [...processed.matchAll(imgSrcRe)];
+      for (const match of imgMatches) {
+        const imgPath = match[2];
+        try {
+          const data = await api.getResource(dictId, imgPath);
+          if (data) {
+            const bytes = new Uint8Array(data);
+            const mime = guessMimeType(imgPath);
+            const base64 = uint8ToBase64(bytes);
+            processed = processed.replace(
+              match[0],
+              `<img${match[1]} src="data:${mime};base64,${base64}"${match[3]}>`,
+            );
+          }
+        } catch {
+          // Image load failed — leave broken (will show alt text)
+        }
+      }
+
+      // Inline audio src as data: URLs
+      const audioSrcRe = /(<(?:audio|source)[^>]*\ssrc=")(?:mdict:\/\/[^/]+\/|(?!https?:\/\/|data:))([^"]+)(")/gi;
+      const audioMatches = [...processed.matchAll(audioSrcRe)];
+      for (const match of audioMatches) {
+        const audioPath = match[2];
+        try {
+          const data = await api.getResource(dictId, audioPath);
+          if (data) {
+            const bytes = new Uint8Array(data);
+            const mime = guessMimeType(audioPath);
+            const base64 = uint8ToBase64(bytes);
+            processed = processed.replace(
+              match[0],
+              `${match[1]}data:${mime};base64,${base64}${match[3]}`,
+            );
+          }
+        } catch {
+          // Audio load failed — leave as-is
         }
       }
 
@@ -159,8 +224,7 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
     return () => { cancelled = true; };
   }, [html, processHtml]);
 
-
-  // Handle link clicks inside iframe (entry:// protocol)
+  // Handle link clicks inside iframe (entry://, audio, http)
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -169,13 +233,33 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
       const doc = iframe!.contentDocument;
       if (!doc) return;
 
+      // Use capture phase so we intercept before dictionary's own handlers
       doc.addEventListener("click", (e) => {
-        const target = (e.target as HTMLElement).closest("a");
+        const target = (e.target as HTMLElement).closest("a[data-audio-src]") || (e.target as HTMLElement).closest("a");
         if (!target) return;
 
         const href = target.getAttribute("href") || "";
+        const audioSrc = target.getAttribute("data-audio-src")
+          || target.getAttribute("data-src-mp3")?.replace(/^\//, "")
+          || target.getAttribute("data-src-ogg")?.replace(/^\//, "")
+          || null;
 
-        if (href.startsWith("entry://")) {
+        if (audioSrc) {
+          // Audio link: load via Tauri IPC and play
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          api.getResource(dictId, audioSrc).then((data) => {
+            if (!data) return;
+            const bytes = new Uint8Array(data);
+            const mime = guessMimeType(audioSrc);
+            const blob = new Blob([bytes], { type: mime });
+            const blobUrl = URL.createObjectURL(blob);
+            const audio = new Audio(blobUrl);
+            audio.play().catch(() => {});
+            audio.addEventListener("ended", () => URL.revokeObjectURL(blobUrl));
+          }).catch(() => {});
+        } else if (href.startsWith("entry://")) {
           e.preventDefault();
           const word = decodeURIComponent(href.slice("entry://".length));
           lookup(word);
@@ -183,12 +267,12 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
           e.preventDefault();
           window.open(href, "_blank");
         }
-      });
+      }, true); // capture phase
     }
 
     iframe.addEventListener("load", handleLoad);
     return () => iframe.removeEventListener("load", handleLoad);
-  }, [lookup]);
+  }, [lookup, dictId]);
 
   // Auto-resize iframe to content height
   useEffect(() => {
@@ -224,15 +308,13 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
     };
   }, [processedDoc]);
 
-  if (!processedDoc) return null;
-
   return (
     <iframe
       ref={iframeRef}
-      srcDoc={processedDoc}
-      sandbox={hasScripts ? "allow-same-origin allow-scripts" : "allow-same-origin"}
+      srcDoc={processedDoc || ""}
+      sandbox="allow-same-origin allow-scripts"
       className={`w-full border-0 ${className ?? ""}`}
-      style={{ minHeight: 60 }}
+      style={{ minHeight: 60, display: processedDoc ? undefined : "none" }}
       title="Dictionary article"
     />
   );

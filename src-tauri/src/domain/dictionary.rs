@@ -88,8 +88,8 @@ pub struct DictConfig {
     pub custom_css: String,
     pub custom_js: String,
     pub js_enabled: bool,
-    pub css_path: Option<String>,
-    pub js_path: Option<String>,
+    pub css_paths: Vec<String>,
+    pub js_paths: Vec<String>,
     pub extra_mdd_paths: Vec<String>,
 }
 
@@ -104,8 +104,8 @@ impl DictConfig {
             custom_css: String::new(),
             custom_js: String::new(),
             js_enabled: false,
-            css_path: None,
-            js_path: None,
+            css_paths: Vec::new(),
+            js_paths: Vec::new(),
             extra_mdd_paths: Vec::new(),
         }
     }
@@ -121,7 +121,7 @@ pub struct DictConfigUpdate {
     pub custom_css: Option<String>,
     pub custom_js: Option<String>,
     pub js_enabled: Option<bool>,
-    pub css_path: Option<String>,
-    pub js_path: Option<String>,
+    pub css_paths: Option<Vec<String>>,
+    pub js_paths: Option<Vec<String>>,
     pub extra_mdd_paths: Option<Vec<String>>,
 }

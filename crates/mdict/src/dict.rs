@@ -383,6 +383,12 @@ impl MdxDict {
     /// 1. Local file in MDX directory (takes precedence)
     /// 2. MDD resource files (with @@@LINK redirect chain support)
     pub fn load_resource(&self, resource_path: &str) -> Result<Vec<u8>> {
+        tracing::debug!(
+            resource_path = %resource_path,
+            mdd_count = self.mdd_paths.len(),
+            "load_resource: START"
+        );
+
         // 1. Try local file first (GoldenDict behaviour)
         if let Some(dir) = self.path.parent() {
             let clean = resource_path
@@ -391,6 +397,7 @@ impl MdxDict {
                 .trim_start_matches("./")
                 .to_string();
             let local = dir.join(&clean);
+            tracing::debug!(local_path = %local.display(), exists = local.is_file(), "load_resource: local file check");
             if local.is_file() {
                 tracing::debug!(path = %local.display(), "load_resource: local file hit");
                 return std::fs::read(&local).map_err(|e| {
@@ -402,18 +409,30 @@ impl MdxDict {
         // 2. MDD lookup with @@@LINK redirect chain
         if !self.mdd_paths.is_empty() {
             let normalized = normalize_resource_path(resource_path);
+            tracing::debug!(
+                resource_path = %resource_path,
+                normalized = %normalized,
+                "load_resource: MDD lookup with normalized path"
+            );
             match resolve_mdd_resource(&normalized, |path| self.mdd_raw_lookup(path)) {
                 Ok(data) => {
-                    tracing::debug!(resource = %resource_path, "load_resource: MDD hit");
+                    let head: Vec<u8> = data.iter().take(16).copied().collect();
+                    tracing::debug!(
+                        resource = %resource_path,
+                        data_len = data.len(),
+                        head_hex = %format!("{:02x?}", head),
+                        "load_resource: MDD hit"
+                    );
                     return Ok(data);
                 }
                 Err(e) => {
-                    tracing::trace!(resource = %resource_path, error = %e, "MDD miss");
+                    tracing::warn!(resource = %resource_path, error = %e, "load_resource: MDD miss");
                 }
             }
         }
 
         let normalized = normalize_resource_path(resource_path);
+        tracing::warn!(resource = %resource_path, normalized = %normalized, "load_resource: NOT FOUND anywhere");
         Err(Error::KeyNotFound(normalized))
     }
 }

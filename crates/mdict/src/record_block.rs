@@ -157,7 +157,19 @@ pub fn extract_record_bytes(file_data: &[u8], info: &RecordInfo) -> Result<Vec<u
     let block_start = info.compressed_block_pos as usize;
     let block_end = block_start + info.compressed_block_size as usize;
 
+    tracing::debug!(
+        block_start,
+        block_end,
+        file_len = file_data.len(),
+        record_offset = info.record_offset,
+        record_size = info.record_size,
+        compressed_block_size = info.compressed_block_size,
+        decompressed_block_size = info.decompressed_block_size,
+        "extract_record_bytes: BEGIN"
+    );
+
     if block_end > file_data.len() {
+        tracing::error!(block_end, file_len = file_data.len(), "extract_record_bytes: block beyond file");
         return Err(Error::Corrupt("record block extends beyond file".into()));
     }
 
@@ -167,11 +179,31 @@ pub fn extract_record_bytes(file_data: &[u8], info: &RecordInfo) -> Result<Vec<u
     let record_start = info.record_offset as usize;
     let record_end = record_start + info.record_size as usize;
 
+    tracing::debug!(
+        record_start,
+        record_end,
+        decompressed_len = decompressed.len(),
+        "extract_record_bytes: slice check"
+    );
+
     if record_end > decompressed.len() {
+        tracing::error!(
+            record_start,
+            record_end,
+            decompressed_len = decompressed.len(),
+            "extract_record_bytes: record beyond decompressed block"
+        );
         return Err(Error::Corrupt("record extends beyond decompressed block".into()));
     }
 
-    Ok(decompressed[record_start..record_end].to_vec())
+    let data = decompressed[record_start..record_end].to_vec();
+    let head: Vec<u8> = data.iter().take(8).copied().collect();
+    tracing::debug!(
+        data_len = data.len(),
+        head_hex = %format!("{:02x?}", head),
+        "extract_record_bytes: OK"
+    );
+    Ok(data)
 }
 
 /// Decode raw record bytes to a UTF-8 string using the dictionary encoding.
