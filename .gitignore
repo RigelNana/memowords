@@ -47,3 +47,7 @@ crates/mdict/tests/fixtures/
 
 # Reference files (not part of the project)
 ref/
+docs/
+.agents/
+PRODUCT.md
+DESIGN.md

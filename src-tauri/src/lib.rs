@@ -42,6 +42,7 @@ pub fn run() {
     tracing::info!("MemoWords starting, log_dir={}", log_dir.display());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .register_uri_scheme_protocol("mdict", |ctx, request| {
             // URL format: mdict://{dict_id}/{resource_path}
