@@ -151,6 +151,29 @@ pub fn extract_record(file_data: &[u8], info: &RecordInfo, encoding: &DictEncodi
     decode_record_text(raw, encoding)
 }
 
+/// Extract raw bytes for a record (used by MDD resource lookup).
+/// Same decompression logic as `extract_record` but returns raw bytes without decoding.
+pub fn extract_record_bytes(file_data: &[u8], info: &RecordInfo) -> Result<Vec<u8>> {
+    let block_start = info.compressed_block_pos as usize;
+    let block_end = block_start + info.compressed_block_size as usize;
+
+    if block_end > file_data.len() {
+        return Err(Error::Corrupt("record block extends beyond file".into()));
+    }
+
+    let compressed = &file_data[block_start..block_end];
+    let decompressed = decompress_block(compressed, info.decompressed_block_size as usize)?;
+
+    let record_start = info.record_offset as usize;
+    let record_end = record_start + info.record_size as usize;
+
+    if record_end > decompressed.len() {
+        return Err(Error::Corrupt("record extends beyond decompressed block".into()));
+    }
+
+    Ok(decompressed[record_start..record_end].to_vec())
+}
+
 /// Decode raw record bytes to a UTF-8 string using the dictionary encoding.
 /// Strips trailing null bytes and whitespace (MDX records are null-terminated).
 fn decode_record_text(data: &[u8], encoding: &DictEncoding) -> Result<String> {

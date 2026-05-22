@@ -5,6 +5,7 @@
 //! to provide a simple lookup API.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use memmap2::Mmap;
 
@@ -13,7 +14,7 @@ use crate::error::Error;
 use crate::header::parse_header;
 use crate::index::{self, DictIndex};
 use crate::key_block::{parse_key_block_header, parse_key_block_info, split_key_block};
-use crate::mdd::{find_mdd_files, normalize_resource_path};
+use crate::mdd::{find_mdd_files, normalize_resource_path, resolve_mdd_resource, MddFile};
 use crate::record_block::{
     extract_record, parse_record_block_header, parse_record_block_infos, build_record_infos,
 };
@@ -41,6 +42,8 @@ pub struct MdxDict {
     record_infos: Vec<RecordInfo>,
     /// Associated MDD file paths.
     pub mdd_paths: Vec<PathBuf>,
+    /// Lazily loaded MDD files (opened on first resource request).
+    mdd_files: OnceLock<Vec<MddFile>>,
     /// Source file path.
     pub path: PathBuf,
 }
@@ -170,6 +173,7 @@ impl MdxDict {
             record_section_offset,
             record_infos,
             mdd_paths,
+            mdd_files: OnceLock::new(),
             path: path.to_path_buf(),
         })
     }
@@ -337,15 +341,50 @@ impl MdxDict {
         extract_record(&self.mmap, info, &self.info.encoding)
     }
 
+    /// Ensure MDD files are loaded (lazy init on first call).
+    fn mdd_files(&self) -> &[MddFile] {
+        self.mdd_files.get_or_init(|| {
+            self.mdd_paths
+                .iter()
+                .filter_map(|p| {
+                    match MddFile::open(p) {
+                        Ok(mdd) => {
+                            tracing::info!(
+                                path = %p.display(),
+                                entries = mdd.entry_count(),
+                                "MDD loaded"
+                            );
+                            Some(mdd)
+                        }
+                        Err(e) => {
+                            tracing::warn!(path = %p.display(), error = %e, "failed to open MDD");
+                            None
+                        }
+                    }
+                })
+                .collect()
+        })
+    }
+
+    /// Raw MDD lookup: search all MDD files for a normalized path.
+    /// Returns raw bytes (may contain @@@LINK redirect data).
+    fn mdd_raw_lookup(&self, normalized: &str) -> Option<Vec<u8>> {
+        for mdd in self.mdd_files() {
+            if let Some(data) = mdd.lookup(normalized) {
+                return Some(data);
+            }
+        }
+        None
+    }
+
     /// Load a resource from associated MDD files by path.
     ///
     /// Resolution order (same as GoldenDict):
     /// 1. Local file in MDX directory (takes precedence)
-    /// 2. MDD resource files (TODO: Phase 6 — full MDD index)
+    /// 2. MDD resource files (with @@@LINK redirect chain support)
     pub fn load_resource(&self, resource_path: &str) -> Result<Vec<u8>> {
         // 1. Try local file first (GoldenDict behaviour)
         if let Some(dir) = self.path.parent() {
-            // Try the path as-is (relative to dict dir)
             let clean = resource_path
                 .replace('\\', "/")
                 .trim_start_matches('/')
@@ -360,7 +399,20 @@ impl MdxDict {
             }
         }
 
-        // 2. MDD lookup (not yet implemented — Phase 6)
+        // 2. MDD lookup with @@@LINK redirect chain
+        if !self.mdd_paths.is_empty() {
+            let normalized = normalize_resource_path(resource_path);
+            match resolve_mdd_resource(&normalized, |path| self.mdd_raw_lookup(path)) {
+                Ok(data) => {
+                    tracing::debug!(resource = %resource_path, "load_resource: MDD hit");
+                    return Ok(data);
+                }
+                Err(e) => {
+                    tracing::trace!(resource = %resource_path, error = %e, "MDD miss");
+                }
+            }
+        }
+
         let normalized = normalize_resource_path(resource_path);
         Err(Error::KeyNotFound(normalized))
     }

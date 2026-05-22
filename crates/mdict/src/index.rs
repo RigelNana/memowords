@@ -227,6 +227,11 @@ pub fn index_path_for(mdx_path: &Path) -> PathBuf {
     mdx_path.with_extension("mdict.idx")
 }
 
+/// Compute the index file path for a given MDD file.
+pub fn mdd_index_path_for(mdd_path: &Path) -> PathBuf {
+    mdd_path.with_extension("mdd.idx")
+}
+
 /// Save a DictIndex to disk.
 pub fn save_index(
     index: &DictIndex,
