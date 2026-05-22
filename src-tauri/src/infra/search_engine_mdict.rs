@@ -16,17 +16,40 @@ use crate::port::search_engine::SearchEngine;
 /// Thread-safe via DashMap for concurrent access.
 pub struct MdictSearchEngine {
     dicts: DashMap<String, Arc<MdxDict>>,
+    /// User-configured display names (overrides MDX title).
+    display_names: DashMap<String, String>,
 }
 
 impl MdictSearchEngine {
     pub fn new() -> Self {
         Self {
             dicts: DashMap::new(),
+            display_names: DashMap::new(),
         }
     }
 
     fn get_dict(&self, dict_id: &DictId) -> Option<Arc<MdxDict>> {
         self.dicts.get(dict_id.as_str()).map(|r| Arc::clone(r.value()))
+    }
+
+    /// Resolve the display name for a dict: user override > MDX title.
+    fn resolve_name(&self, dict_id: &DictId, dict: &MdxDict) -> String {
+        self.display_names
+            .get(dict_id.as_str())
+            .map(|r| r.value().clone())
+            .unwrap_or_else(|| dict.title().to_string())
+    }
+
+    /// Set or clear a user-configured display name for a dictionary.
+    pub fn set_display_name(&self, dict_id: &DictId, name: Option<String>) {
+        match name {
+            Some(n) if !n.is_empty() => {
+                self.display_names.insert(dict_id.as_str().to_string(), n);
+            }
+            _ => {
+                self.display_names.remove(dict_id.as_str());
+            }
+        }
     }
 }
 
@@ -49,7 +72,7 @@ impl SearchEngine for MdictSearchEngine {
                 results.push(SearchCandidate {
                     headword: hw.to_string(),
                     dict_id: dict_id.clone(),
-                    dict_name: dict.title().to_string(),
+                    dict_name: self.resolve_name(dict_id, &dict),
                 });
                 if results.len() >= limit {
                     return Ok(results);
@@ -78,7 +101,7 @@ impl SearchEngine for MdictSearchEngine {
                 results.push(SearchCandidate {
                     headword: hw.to_string(),
                     dict_id: dict_id.clone(),
-                    dict_name: dict.title().to_string(),
+                    dict_name: self.resolve_name(dict_id, &dict),
                 });
                 if results.len() >= limit {
                     return Ok(results);
@@ -106,7 +129,7 @@ impl SearchEngine for MdictSearchEngine {
                         }
                         articles.push(DictArticle {
                             dict_id: dict_id.clone(),
-                            dict_name: dict.title().to_string(),
+                            dict_name: self.resolve_name(dict_id, &dict),
                             headword: word.to_string(),
                             html,
                         });

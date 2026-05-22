@@ -135,6 +135,10 @@ pub fn run() {
                                         "failed to load dict on startup"
                                     );
                                 }
+                                // Load display name override from config
+                                if let Ok(config) = repo.get_dict_config(&meta.id).await {
+                                    engine.set_display_name(&meta.id, config.display_name);
+                                }
                             }
                             tracing::info!(count = dicts.len(), "startup dict loading complete");
                         }

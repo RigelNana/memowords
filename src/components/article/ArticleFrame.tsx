@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchStore } from "../../stores/searchStore";
+import { api } from "../../lib/tauri";
 
 interface ArticleFrameProps {
   html: string;
@@ -22,6 +23,7 @@ const BASE_STYLES = `
     margin: 0;
     padding: 16px 20px;
     max-width: 75ch;
+    overflow: hidden;
     overflow-wrap: break-word;
     word-break: break-word;
   }
@@ -50,10 +52,14 @@ const BASE_STYLES = `
 export function ArticleFrame({ html, dictId, customCss, customJs, className }: ArticleFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const lookup = useSearchStore((s) => s.lookup);
+  const [processedDoc, setProcessedDoc] = useState<string>("");
 
-  // Rewrite relative resource URLs to mdict:// protocol
+  // Detect if article HTML itself contains <script> tags
+  const hasScripts = /<script[\s>]/i.test(html) || !!customJs;
+
+  // Async HTML processing: rewrite URLs + inline external scripts from MDD
   const processHtml = useCallback(
-    (rawHtml: string) => {
+    async (rawHtml: string): Promise<string> => {
       let processed = rawHtml;
 
       // Rewrite img src
@@ -65,10 +71,7 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
       // Rewrite link href (CSS)
       processed = processed.replace(
         /(<link[^>]+href=")(?!https?:\/\/|data:|mdict:\/\/)([^"]+)(")/gi,
-        (_match, p1, p2, p3) => {
-          console.debug("[ArticleFrame] rewrite CSS link:", p2, "→", `mdict://${dictId}/${p2}`);
-          return `${p1}mdict://${dictId}/${p2}${p3}`;
-        },
+        `$1mdict://${dictId}/$2$3`,
       );
 
       // Rewrite sound:// to mdict://
@@ -77,15 +80,56 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
         `mdict://${dictId}/`,
       );
 
+      // Inline external <script src="..."> from MDD/local (GoldenDict approach)
+      // srcDoc iframes can't reliably load custom-protocol scripts, so inline them
+      const scriptSrcRe = /<script([^>]*)\ssrc=["'](?!https?:\/\/|data:)([^"']+)["']([^>]*)>(\s*<\/script>)?/gi;
+      const scriptMatches = [...processed.matchAll(scriptSrcRe)];
+      for (const match of scriptMatches) {
+        const srcPath = match[2];
+        try {
+          const data = await api.getResource(dictId, srcPath);
+          if (data) {
+            const jsText = new TextDecoder().decode(new Uint8Array(data));
+            processed = processed.replace(match[0], `<script>${jsText}<\/script>`);
+          }
+        } catch {
+          // Script load failed — remove the broken tag
+          processed = processed.replace(match[0], `<!-- failed to load: ${srcPath} -->`);
+        }
+      }
+
+      // Inline external <link rel="stylesheet" href="..."> from MDD/local
+      const linkCssRe = /<link[^>]+rel=["']stylesheet["'][^>]+href=["']mdict:\/\/[^/]+\/([^"']+)["'][^>]*\/?>/gi;
+      const cssMatches = [...processed.matchAll(linkCssRe)];
+      for (const match of cssMatches) {
+        const cssPath = match[1];
+        try {
+          const data = await api.getResource(dictId, cssPath);
+          if (data) {
+            const cssText = new TextDecoder().decode(new Uint8Array(data));
+            processed = processed.replace(match[0], `<style>${cssText}</style>`);
+          }
+        } catch {
+          // CSS load failed — keep original (protocol handler may still work)
+        }
+      }
+
       const customStyle = customCss ? `<style>${customCss}</style>` : "";
       const customScript = customJs ? `<script>${customJs}<\/script>` : "";
-
-      console.debug("[ArticleFrame] dictId:", dictId, "customCss:", customCss ? `${customCss.length}ch` : "none", "customJs:", customJs ? `${customJs.length}ch` : "none");
 
       return `<!DOCTYPE html><html><head>${BASE_STYLES}${customStyle}</head><body>${processed}${customScript}</body></html>`;
     },
     [dictId, customCss, customJs],
   );
+
+  // Run async processing whenever html/deps change
+  useEffect(() => {
+    let cancelled = false;
+    processHtml(html).then((doc) => {
+      if (!cancelled) setProcessedDoc(doc);
+    });
+    return () => { cancelled = true; };
+  }, [html, processHtml]);
 
   // Handle link clicks inside iframe (entry:// protocol)
   useEffect(() => {
@@ -108,7 +152,6 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
           lookup(word);
         } else if (href.startsWith("http://") || href.startsWith("https://")) {
           e.preventDefault();
-          // Open external links in system browser (Tauri shell)
           window.open(href, "_blank");
         }
       });
@@ -131,7 +174,6 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
 
     iframe.addEventListener("load", resize);
 
-    // Also resize on mutations (images loading, etc.)
     const observer = new MutationObserver(resize);
     const intervalCheck = setInterval(() => {
       const doc = iframe.contentDocument;
@@ -151,13 +193,15 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
       observer.disconnect();
       clearInterval(intervalCheck);
     };
-  }, [html]);
+  }, [processedDoc]);
+
+  if (!processedDoc) return null;
 
   return (
     <iframe
       ref={iframeRef}
-      srcDoc={processHtml(html)}
-      sandbox={customJs ? "allow-same-origin allow-scripts" : "allow-same-origin"}
+      srcDoc={processedDoc}
+      sandbox={hasScripts ? "allow-same-origin allow-scripts" : "allow-same-origin"}
       className={`w-full border-0 ${className ?? ""}`}
       style={{ minHeight: 60 }}
       title="Dictionary article"

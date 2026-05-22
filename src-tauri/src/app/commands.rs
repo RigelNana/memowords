@@ -286,6 +286,11 @@ pub async fn update_dict_config(
 ) -> CmdResult<()> {
     tracing::debug!(dict_id = %dict_id, config = ?config, "update_dict_config called");
     let id = DictId(dict_id);
+    // Sync display name to search engine if it changed
+    if let Some(ref dn) = config.display_name {
+        let name = if dn.is_empty() { None } else { Some(dn.clone()) };
+        state.search_engine.set_display_name(&id, name);
+    }
     match state.dict_repo.update_dict_config(&id, &config).await {
         Ok(()) => {
             tracing::info!(dict_id = %id, "update_dict_config ok");
