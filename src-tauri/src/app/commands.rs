@@ -5,11 +5,12 @@ use tauri::State;
 
 use crate::app::state::AppState;
 use crate::domain::dictionary::{
-    DictArticle, DictGroup, DictId, DictMeta, GroupId, SearchCandidate,
+    DictArticle, DictConfig, DictConfigUpdate, DictGroup, DictId, DictMeta, GroupId, SearchCandidate,
 };
 use crate::infra::fs::find_mdx_files;
 use crate::port::dict_repo::DictRepo;
 use crate::port::search_engine::SearchEngine;
+use mdict::mdd::find_mdd_files;
 
 // ─── Error type ───────────────────────────────────────────────
 
@@ -36,6 +37,43 @@ pub async fn scan_dicts(dir: String) -> CmdResult<Vec<String>> {
     let path = PathBuf::from(&dir);
     let files = find_mdx_files(&path)?;
     Ok(files.iter().map(|p| p.display().to_string()).collect())
+}
+
+/// Detect CSS/JS/MDD resource files next to an MDX file.
+/// Follows GoldenDict conventions:
+/// - CSS: `<base>.css`, `article-style.css`
+/// - JS: `<base>.js`, `article-script.js`
+/// - MDD: `<base>.mdd`, `<base>.1.mdd`, `<base>.2.mdd`, ...
+#[tauri::command]
+pub async fn detect_dict_resources(mdx_path: String) -> CmdResult<DetectedResources> {
+    let path = PathBuf::from(&mdx_path);
+    let dir = path.parent().unwrap_or(&path);
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+
+    let candidates_css = [
+        dir.join(format!("{stem}.css")),
+        dir.join("article-style.css"),
+    ];
+    let candidates_js = [
+        dir.join(format!("{stem}.js")),
+        dir.join("article-script.js"),
+    ];
+
+    let css_path = candidates_css.iter().find(|p| p.is_file()).map(|p| p.display().to_string());
+    let js_path = candidates_js.iter().find(|p| p.is_file()).map(|p| p.display().to_string());
+    let mdd_paths: Vec<String> = find_mdd_files(&path)
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect();
+
+    Ok(DetectedResources { css_path, js_path, mdd_paths })
+}
+
+#[derive(Debug, Serialize)]
+pub struct DetectedResources {
+    pub css_path: Option<String>,
+    pub js_path: Option<String>,
+    pub mdd_paths: Vec<String>,
 }
 
 /// Import a dictionary: register in DB + load into search engine.
@@ -217,6 +255,47 @@ pub async fn delete_group(
         .await
         ?;
     Ok(())
+}
+
+// ─── Dict Config ─────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_dict_config(
+    state: State<'_, AppState>,
+    dict_id: String,
+) -> CmdResult<DictConfig> {
+    tracing::debug!(dict_id = %dict_id, "get_dict_config called");
+    let id = DictId(dict_id);
+    match state.dict_repo.get_dict_config(&id).await {
+        Ok(config) => {
+            tracing::debug!(dict_id = %id, display_name = ?config.display_name, "get_dict_config ok");
+            Ok(config)
+        }
+        Err(e) => {
+            tracing::error!(dict_id = %id, error = %e, "get_dict_config failed");
+            Err(e.into())
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn update_dict_config(
+    state: State<'_, AppState>,
+    dict_id: String,
+    config: DictConfigUpdate,
+) -> CmdResult<()> {
+    tracing::debug!(dict_id = %dict_id, config = ?config, "update_dict_config called");
+    let id = DictId(dict_id);
+    match state.dict_repo.update_dict_config(&id, &config).await {
+        Ok(()) => {
+            tracing::info!(dict_id = %id, "update_dict_config ok");
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!(dict_id = %id, error = %e, "update_dict_config failed");
+            Err(e.into())
+        }
+    }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────

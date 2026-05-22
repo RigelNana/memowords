@@ -12,7 +12,8 @@ import { SegmentControl } from "../components/ui/SegmentControl";
 import { Select } from "../components/ui/Select";
 import { Toggle } from "../components/ui/Toggle";
 import { useSettingsStore } from "../stores/settingsStore";
-import { DictsPanel } from "../components/settings/DictsPanel";
+import { DictsManagePage } from "../components/settings/DictsManagePage";
+import { GroupsManagePage } from "../components/settings/GroupsManagePage";
 
 // ── Option data ────────────────────────────────────────────
 
@@ -42,13 +43,14 @@ const algorithmOptions = [
 
 // ── Tab definitions ────────────────────────────────────────
 
-type TabId = "general" | "search" | "review" | "dicts" | "about";
+type TabId = "general" | "search" | "review" | "dicts" | "groups" | "about";
 
 const tabs: { id: TabId; label: string; icon: typeof Settings2 }[] = [
   { id: "general", label: "General", icon: Settings2 },
   { id: "search", label: "Search", icon: Search },
   { id: "review", label: "Review", icon: BookOpen },
   { id: "dicts", label: "Dictionaries", icon: Library },
+  { id: "groups", label: "Groups", icon: BookOpen },
   { id: "about", label: "About", icon: Info },
 ];
 
@@ -125,7 +127,16 @@ export function SettingsPage() {
         </nav>
 
         {/* Content panel */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-hidden">
+          {/* Full-bleed tabs */}
+          {activeTab === "dicts" && <DictsManagePage />}
+          {activeTab === "groups" && <GroupsManagePage />}
+
+          {/* Constrained settings tabs */}
+          <div className={[
+            "h-full overflow-y-auto px-6 py-4",
+            activeTab === "dicts" || activeTab === "groups" ? "hidden" : "",
+          ].join(" ")}>
           <div className="mx-auto max-w-[560px]">
             {/* ── General ─────────────────────────── */}
             {activeTab === "general" && (
@@ -210,9 +221,6 @@ export function SettingsPage() {
               </SettingSection>
             )}
 
-            {/* ── Dictionaries ────────────────────── */}
-            {activeTab === "dicts" && <DictsPanel />}
-
             {/* ── About ───────────────────────────── */}
             {activeTab === "about" && (
               <SettingSection title="About">
@@ -224,6 +232,7 @@ export function SettingsPage() {
                 </SettingRow>
               </SettingSection>
             )}
+          </div>
           </div>
         </div>
       </div>

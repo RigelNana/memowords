@@ -46,7 +46,7 @@ export function SearchBar() {
           break;
         case "Enter":
           e.preventDefault();
-          selectCandidate(selectedIndex);
+          selectCandidate(selectedIndex, true);
           break;
         case "Escape":
           e.preventDefault();

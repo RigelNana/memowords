@@ -41,7 +41,7 @@ export function DictCard({ dict, onEdit, onRemove }: DictCardProps) {
       {/* Actions */}
       <div className="flex shrink-0 items-start gap-1 opacity-0 transition-opacity duration-[var(--duration-fast)] group-hover:opacity-100">
         <button
-          onClick={() => onEdit(dict.id["0"])}
+          onClick={() => onEdit(dict.id)}
           className="rounded-[var(--radius-sm)] p-2 text-text-tertiary transition-colors duration-[var(--duration-fast)] hover:bg-surface-sunken hover:text-text-primary"
           aria-label="Edit dictionary"
         >
@@ -51,7 +51,7 @@ export function DictCard({ dict, onEdit, onRemove }: DictCardProps) {
         <ConfirmPopover
           open={confirmOpen}
           onClose={() => setConfirmOpen(false)}
-          onConfirm={() => onRemove(dict.id["0"])}
+          onConfirm={() => onRemove(dict.id)}
           title="Remove dictionary?"
           description="This will remove the dictionary from the app. The original files will not be deleted."
           confirmLabel="Remove"

@@ -29,9 +29,9 @@ export interface DictArticle {
   html: string;
 }
 
-// Rust newtype wrappers serialize as single-element tuples
-export type DictId = { "0": string };
-export type GroupId = { "0": string };
+// Rust newtype wrappers serialize as plain strings via serde
+export type DictId = string;
+export type GroupId = string;
 
 export type DarkModeStrategy = "auto" | "invert" | "custom_css" | "off";
 
@@ -43,15 +43,21 @@ export interface DictConfig {
   custom_css: string;
   custom_js: string;
   js_enabled: boolean;
+  css_path: string | null;
+  js_path: string | null;
+  extra_mdd_paths: string[];
 }
 
 export interface DictConfigUpdate {
-  display_name?: string | null;
+  display_name?: string;
   priority?: number;
   dark_mode?: DarkModeStrategy;
   custom_css?: string;
   custom_js?: string;
   js_enabled?: boolean;
+  css_path?: string;
+  js_path?: string;
+  extra_mdd_paths?: string[];
 }
 
 export interface DictFileInfo {
@@ -61,11 +67,17 @@ export interface DictFileInfo {
   last_indexed_at: string | null;
 }
 
-// Helpers to extract raw string from newtype wrappers
+export interface DetectedResources {
+  css_path: string | null;
+  js_path: string | null;
+  mdd_paths: string[];
+}
+
+// Helpers (now identity — kept for API compatibility)
 export function dictIdStr(id: DictId): string {
-  return id["0"];
+  return id;
 }
 
 export function groupIdStr(id: GroupId): string {
-  return id["0"];
+  return id;
 }

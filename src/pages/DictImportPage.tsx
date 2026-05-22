@@ -150,7 +150,7 @@ export function DictImportPage() {
       const meta = await api.importDict(mdxPath);
       // Save CSS/JS config if provided
       if (cssContent || jsContent) {
-        const dictId = meta.id["0"];
+        const dictId = meta.id;
         await api.updateDictConfig(dictId, {
           custom_css: cssContent || undefined,
           custom_js: jsContent || undefined,

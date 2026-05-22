@@ -13,13 +13,12 @@ use crate::error::Error;
 use crate::header::parse_header;
 use crate::index::{self, DictIndex};
 use crate::key_block::{parse_key_block_header, parse_key_block_info, split_key_block};
-use crate::link::resolve_links;
 use crate::mdd::{find_mdd_files, normalize_resource_path};
 use crate::record_block::{
     extract_record, parse_record_block_header, parse_record_block_infos, build_record_infos,
 };
 use crate::stylesheet::substitute_stylesheet;
-use crate::types::{HeaderInfo, KeyEntry, RecordIndex};
+use crate::types::{HeaderInfo, KeyEntry, RecordIndex, RecordInfo};
 use crate::Result;
 
 /// A parsed and indexed MDX dictionary ready for lookups.
@@ -32,10 +31,14 @@ pub struct MdxDict {
     entries: Vec<KeyEntry>,
     /// FST index for fast lookup.
     index: DictIndex,
-    /// Record block index for binary search.
+    /// Record block index (kept for potential future diagnostics).
+    #[allow(dead_code)]
     record_blocks: Vec<RecordIndex>,
     /// Absolute file offset where record data begins.
+    #[allow(dead_code)]
     record_section_offset: u64,
+    /// Pre-computed RecordInfo per entry (indexed same as `entries`).
+    record_infos: Vec<RecordInfo>,
     /// Associated MDD file paths.
     pub mdd_paths: Vec<PathBuf>,
     /// Source file path.
@@ -155,6 +158,9 @@ impl MdxDict {
             "MDX dictionary opened"
         );
 
+        // 8. Pre-compute RecordInfo for every entry (needs all entries for correct sizing)
+        let record_infos = build_record_infos(&all_entries, &record_blocks, record_section_offset)?;
+
         Ok(Self {
             info,
             mmap,
@@ -162,6 +168,7 @@ impl MdxDict {
             index,
             record_blocks,
             record_section_offset,
+            record_infos,
             mdd_paths,
             path: path.to_path_buf(),
         })
@@ -177,33 +184,120 @@ impl MdxDict {
         &self.info.title
     }
 
+    /// Get entry indices for a word from the FST index (for diagnostics).
+    pub fn get_entry_indices(&self, word: &str) -> Vec<usize> {
+        self.index.get(word)
+    }
+
+    /// Get all key entries (for diagnostics).
+    pub fn entries(&self) -> &[KeyEntry] {
+        &self.entries
+    }
+
+    /// Load the raw article text for an entry index (for diagnostics).
+    pub fn load_article_for_entry(&self, idx: usize) -> Result<String> {
+        self.load_article_by_idx(idx)
+    }
+
     /// Lookup a word (exact match, case-insensitive via FST index).
     /// Returns all matching article HTML texts.
+    ///
+    /// Uses a GoldenDict-style chain approach:
+    /// - Walk a queue of entry indices; for each entry load the article.
+    /// - If the article is a `@@@LINK=target` redirect, resolve target to
+    ///   new entry indices and append them to the queue (instead of recursing).
+    /// - Deduplicate by entry index **and** by content hash so physically
+    ///   duplicated articles only appear once.
     pub fn lookup(&self, word: &str) -> Result<Vec<String>> {
-        let indices = self.index.get(word);
-        if indices.is_empty() {
+        use std::collections::HashSet;
+
+        let initial = self.index.get(word);
+        if initial.is_empty() {
             return Ok(vec![]);
         }
 
-        let mut articles = Vec::new();
-        for &idx in &indices {
-            let entry = &self.entries[idx];
-            let article = self.load_article(entry)?;
+        tracing::debug!(
+            word,
+            initial_count = initial.len(),
+            headwords = ?initial.iter().take(10).map(|&i| &self.entries[i].headword).collect::<Vec<_>>(),
+            "lookup: index matched"
+        );
 
-            // Resolve @@@LINK redirects
-            let resolved = resolve_links(&article, |target| {
-                let target_indices = self.index.get(target);
-                target_indices.first().and_then(|&i| {
-                    self.load_article(&self.entries[i]).ok()
-                })
-            })?;
+        // Queue of entry indices still to process (GoldenDict calls this "chain")
+        let mut queue: Vec<usize> = initial;
+        let mut seen_indices: HashSet<usize> = HashSet::new();
+        let mut seen_hashes: HashSet<u64> = HashSet::new();
+        let mut articles: Vec<String> = Vec::new();
+        let mut cursor = 0;
+
+        while cursor < queue.len() {
+            let idx = queue[cursor];
+            cursor += 1;
+
+            // Skip already-visited entry index
+            if !seen_indices.insert(idx) {
+                continue;
+            }
+
+            let headword = &self.entries[idx].headword;
+            let raw = match self.load_article_by_idx(idx) {
+                Ok(text) => text,
+                Err(e) => {
+                    tracing::warn!(headword = %headword, error = %e, "failed to load article");
+                    continue;
+                }
+            };
+
+            // Handle @@@LINK redirects: resolve target and append to queue
+            if let Some(target) = crate::link::parse_link(&raw) {
+                let target_indices = self.resolve_link_target(target);
+                for ti in target_indices {
+                    if !seen_indices.contains(&ti) {
+                        queue.push(ti);
+                    }
+                }
+                continue;
+            }
+
+            // Content dedup via simple hash
+            let hash = Self::hash_content(&raw);
+            if !seen_hashes.insert(hash) {
+                continue;
+            }
 
             // Apply stylesheet substitution
-            let processed = substitute_stylesheet(&resolved, &self.info.stylesheets);
+            let processed = substitute_stylesheet(&raw, &self.info.stylesheets);
             articles.push(processed);
         }
 
         Ok(articles)
+    }
+
+    /// Resolve an @@@LINK target to entry indices, with fallback trimming.
+    fn resolve_link_target(&self, target: &str) -> Vec<usize> {
+        let indices = self.index.get(target);
+        if !indices.is_empty() {
+            return indices;
+        }
+        // Fallback: trim whitespace / trailing punctuation
+        let trimmed = target.trim().trim_end_matches(|c: char| c.is_ascii_punctuation());
+        if trimmed != target {
+            let indices2 = self.index.get(trimmed);
+            if !indices2.is_empty() {
+                return indices2;
+            }
+        }
+        Vec::new()
+    }
+
+    /// Simple FNV-1a hash for content dedup (not cryptographic).
+    fn hash_content(s: &str) -> u64 {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for b in s.bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        h
     }
 
     /// Prefix search: find headwords starting with the given prefix.
@@ -226,25 +320,39 @@ impl MdxDict {
             .collect()
     }
 
-    /// Load raw article text for a key entry.
-    fn load_article(&self, entry: &KeyEntry) -> Result<String> {
-        let infos = build_record_infos(
-            std::slice::from_ref(entry),
-            &self.record_blocks,
-            self.record_section_offset,
-        )?;
-
-        if infos.is_empty() {
-            return Err(Error::Corrupt("no record info built".into()));
-        }
-
-        extract_record(&self.mmap, &infos[0], &self.info.encoding)
+    /// Load raw article text for an entry by its index.
+    fn load_article_by_idx(&self, idx: usize) -> Result<String> {
+        let info = self.record_infos.get(idx).ok_or_else(|| {
+            Error::Corrupt(format!("entry index {} out of range", idx))
+        })?;
+        extract_record(&self.mmap, info, &self.info.encoding)
     }
 
     /// Load a resource from associated MDD files by path.
+    ///
+    /// Resolution order (same as GoldenDict):
+    /// 1. Local file in MDX directory (takes precedence)
+    /// 2. MDD resource files (TODO: Phase 6 — full MDD index)
     pub fn load_resource(&self, resource_path: &str) -> Result<Vec<u8>> {
+        // 1. Try local file first (GoldenDict behaviour)
+        if let Some(dir) = self.path.parent() {
+            // Try the path as-is (relative to dict dir)
+            let clean = resource_path
+                .replace('\\', "/")
+                .trim_start_matches('/')
+                .trim_start_matches("./")
+                .to_string();
+            let local = dir.join(&clean);
+            if local.is_file() {
+                tracing::debug!(path = %local.display(), "load_resource: local file hit");
+                return std::fs::read(&local).map_err(|e| {
+                    Error::Io(std::io::Error::new(e.kind(), format!("reading {}: {e}", local.display())))
+                });
+            }
+        }
+
+        // 2. MDD lookup (not yet implemented — Phase 6)
         let normalized = normalize_resource_path(resource_path);
-        // For now, return KeyNotFound — full MDD index loading is Phase 6
         Err(Error::KeyNotFound(normalized))
     }
 }

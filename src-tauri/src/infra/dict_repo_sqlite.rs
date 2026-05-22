@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 
-use crate::domain::dictionary::{DictGroup, DictId, DictMeta, GroupId};
+use crate::domain::dictionary::{DictConfig, DictConfigUpdate, DictGroup, DictId, DictMeta, GroupId};
 use crate::port::dict_repo::DictRepo;
 
 pub struct SqliteDictRepo {
@@ -152,6 +152,108 @@ impl DictRepo for SqliteDictRepo {
             .await?;
         Ok(())
     }
+
+    async fn get_dict_config(&self, dict_id: &DictId) -> Result<DictConfig> {
+        let row = sqlx::query_as::<_, DictConfigRow>(
+            "SELECT dict_id, display_name, priority, dark_mode, custom_css, custom_js, js_enabled, css_path, js_path, extra_mdd_paths FROM dict_config WHERE dict_id = ?"
+        )
+        .bind(dict_id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match row {
+            Some(r) => Ok(r.into()),
+            None => Ok(DictConfig::default_for(dict_id)),
+        }
+    }
+
+    async fn update_dict_config(&self, dict_id: &DictId, update: &DictConfigUpdate) -> Result<()> {
+        tracing::debug!(dict_id = %dict_id, "update_dict_config: inserting default row if needed");
+        // Ensure row exists (upsert defaults first)
+        let insert_result = sqlx::query(
+            "INSERT OR IGNORE INTO dict_config (dict_id) VALUES (?)"
+        )
+        .bind(dict_id.as_str())
+        .execute(&self.pool)
+        .await;
+
+        match &insert_result {
+            Ok(r) => tracing::debug!(rows_affected = r.rows_affected(), "upsert result"),
+            Err(e) => tracing::error!(error = %e, "upsert failed"),
+        }
+        insert_result?;
+
+        // Build dynamic update
+        let mut sets = Vec::new();
+        let mut binds: Vec<String> = Vec::new();
+
+        if let Some(ref dn) = update.display_name {
+            sets.push("display_name = ?");
+            binds.push(dn.clone());
+        }
+        if let Some(p) = update.priority {
+            sets.push("priority = ?");
+            binds.push(p.to_string());
+        }
+        if let Some(ref dm) = update.dark_mode {
+            sets.push("dark_mode = ?");
+            binds.push(dm.clone());
+        }
+        if let Some(ref css) = update.custom_css {
+            sets.push("custom_css = ?");
+            binds.push(css.clone());
+        }
+        if let Some(ref js) = update.custom_js {
+            sets.push("custom_js = ?");
+            binds.push(js.clone());
+        }
+        if let Some(je) = update.js_enabled {
+            sets.push("js_enabled = ?");
+            binds.push(if je { "1".into() } else { "0".into() });
+        }
+        if let Some(ref cp) = update.css_path {
+            sets.push("css_path = ?");
+            binds.push(cp.clone());
+        }
+        if let Some(ref jp) = update.js_path {
+            sets.push("js_path = ?");
+            binds.push(jp.clone());
+        }
+        if let Some(ref mdd) = update.extra_mdd_paths {
+            sets.push("extra_mdd_paths = ?");
+            binds.push(serde_json::to_string(mdd).unwrap_or_else(|_| "[]".into()));
+        }
+
+        if sets.is_empty() {
+            return Ok(());
+        }
+
+        sets.push("updated_at = datetime('now')");
+
+        let sql = format!(
+            "UPDATE dict_config SET {} WHERE dict_id = ?",
+            sets.join(", ")
+        );
+
+        tracing::debug!(%sql, binds = ?binds, dict_id = %dict_id, "executing update");
+
+        let mut query = sqlx::query(&sql);
+        for b in &binds {
+            query = query.bind(b);
+        }
+        query = query.bind(dict_id.as_str());
+
+        match query.execute(&self.pool).await {
+            Ok(r) => {
+                tracing::debug!(rows_affected = r.rows_affected(), "update executed");
+                Ok(())
+            }
+            Err(e) => {
+                tracing::error!(error = %e, %sql, "update_dict_config SQL failed");
+                Err(e.into())
+            }
+        }
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -183,4 +285,36 @@ impl From<DictRow> for DictMeta {
 struct GroupRow {
     id: String,
     name: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct DictConfigRow {
+    dict_id: String,
+    display_name: Option<String>,
+    priority: i32,
+    dark_mode: String,
+    custom_css: String,
+    custom_js: String,
+    js_enabled: i32,
+    css_path: Option<String>,
+    js_path: Option<String>,
+    extra_mdd_paths: String,
+}
+
+impl From<DictConfigRow> for DictConfig {
+    fn from(r: DictConfigRow) -> Self {
+        let mdd_paths: Vec<String> = serde_json::from_str(&r.extra_mdd_paths).unwrap_or_default();
+        Self {
+            dict_id: DictId(r.dict_id),
+            display_name: r.display_name,
+            priority: r.priority,
+            dark_mode: r.dark_mode,
+            custom_css: r.custom_css,
+            custom_js: r.custom_js,
+            js_enabled: r.js_enabled != 0,
+            css_path: r.css_path.filter(|s| !s.is_empty()),
+            js_path: r.js_path.filter(|s| !s.is_empty()),
+            extra_mdd_paths: mdd_paths,
+        }
+    }
 }

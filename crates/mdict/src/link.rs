@@ -89,7 +89,10 @@ where
                 match lookup_fn(target) {
                     Some(article) => current = article,
                     None => {
-                        return Err(Error::KeyNotFound(target.to_string()));
+                        // Target not found — return the raw link text instead of failing.
+                        // Many dictionaries have dangling @@@LINK entries for regional
+                        // variants or inflections whose targets simply don't exist.
+                        return Ok(current);
                     }
                 }
             }
@@ -196,7 +199,8 @@ mod tests {
 
     #[test]
     fn resolve_link_target_not_found() {
-        let result = resolve_links("@@@LINK=nonexistent", |_| None);
-        assert!(result.is_err());
+        // Dangling links now gracefully return the raw article text
+        let result = resolve_links("@@@LINK=nonexistent", |_| None).unwrap();
+        assert_eq!(result, "@@@LINK=nonexistent");
     }
 }

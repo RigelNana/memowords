@@ -26,7 +26,7 @@ export function DictGroupSwitcher({ collapsed }: DictGroupSwitcherProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
 
   const activeGroup = groups.find(
-    (g) => g.id["0"] === activeGroupId,
+    (g) => g.id === activeGroupId,
   );
 
   useEffect(() => {
@@ -165,19 +165,19 @@ export function DictGroupSwitcher({ collapsed }: DictGroupSwitcherProps) {
 
               {groups.map((group) => (
                 <button
-                  key={group.id["0"]}
+                  key={group.id}
                   onClick={() => {
-                    setActiveGroup(group.id["0"]);
+                    setActiveGroup(group.id);
                     setOpen(false);
                   }}
                   className={[
                     "flex h-8 w-full items-center gap-2 rounded-[var(--radius-sm)] px-3 text-sm transition-colors duration-[var(--duration-fast)]",
-                    activeGroupId === group.id["0"]
+                    activeGroupId === group.id
                       ? "bg-accent-subtle text-accent"
                       : "text-text-primary hover:bg-surface-sunken",
                   ].join(" ")}
                 >
-                  {activeGroupId === group.id["0"] && (
+                  {activeGroupId === group.id && (
                     <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                   )}
                   <span className="truncate">{group.name}</span>

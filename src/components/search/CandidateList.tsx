@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { AnimatePresence } from "framer-motion";
 import { useSearchStore } from "../../stores/searchStore";
 import { useScrollIntoView } from "../../hooks/useScrollIntoView";
 import { CandidateItem } from "./CandidateItem";
@@ -56,17 +55,15 @@ export function CandidateList() {
       className="flex-1 overflow-y-auto py-1"
       style={{ scrollbarWidth: "thin" }}
     >
-      <AnimatePresence mode="popLayout">
-        {candidates.map((c, i) => (
-          <CandidateItem
-            key={`${c.headword}-${c.dict_id["0"]}`}
-            headword={c.headword}
-            isActive={i === selectedIndex}
-            index={i}
-            onClick={() => selectCandidate(i)}
-          />
-        ))}
-      </AnimatePresence>
+      {candidates.map((c, i) => (
+        <CandidateItem
+          key={`${c.headword}-${c.dict_id}`}
+          headword={c.headword}
+          isActive={i === selectedIndex}
+          index={i}
+          onClick={() => selectCandidate(i, true)}
+        />
+      ))}
     </div>
   );
 }

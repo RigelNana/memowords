@@ -65,7 +65,10 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
       // Rewrite link href (CSS)
       processed = processed.replace(
         /(<link[^>]+href=")(?!https?:\/\/|data:|mdict:\/\/)([^"]+)(")/gi,
-        `$1mdict://${dictId}/$2$3`,
+        (_match, p1, p2, p3) => {
+          console.debug("[ArticleFrame] rewrite CSS link:", p2, "→", `mdict://${dictId}/${p2}`);
+          return `${p1}mdict://${dictId}/${p2}${p3}`;
+        },
       );
 
       // Rewrite sound:// to mdict://
@@ -76,6 +79,8 @@ export function ArticleFrame({ html, dictId, customCss, customJs, className }: A
 
       const customStyle = customCss ? `<style>${customCss}</style>` : "";
       const customScript = customJs ? `<script>${customJs}<\/script>` : "";
+
+      console.debug("[ArticleFrame] dictId:", dictId, "customCss:", customCss ? `${customCss.length}ch` : "none", "customJs:", customJs ? `${customJs.length}ch` : "none");
 
       return `<!DOCTYPE html><html><head>${BASE_STYLES}${customStyle}</head><body>${processed}${customScript}</body></html>`;
     },

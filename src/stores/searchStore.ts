@@ -18,8 +18,8 @@ interface SearchState {
   // Actions
   setQuery: (q: string) => void;
   search: (q: string, groupId?: string) => Promise<void>;
-  selectCandidate: (index: number) => void;
-  lookup: (word: string, groupId?: string) => Promise<void>;
+  selectCandidate: (index: number, confirm?: boolean) => void;
+  lookup: (word: string, groupId?: string, recordHistory?: boolean) => Promise<void>;
   clear: () => void;
   moveSelection: (direction: "up" | "down") => void;
 }
@@ -64,15 +64,15 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     }
   },
 
-  selectCandidate: (index) => {
+  selectCandidate: (index, confirm) => {
     const { candidates } = get();
     if (index < 0 || index >= candidates.length) return;
 
     set({ selectedIndex: index });
-    get().lookup(candidates[index].headword);
+    get().lookup(candidates[index].headword, undefined, confirm);
   },
 
-  lookup: async (word, groupId) => {
+  lookup: async (word, groupId, recordHistory) => {
     if (!word.trim()) return;
 
     set({ currentWord: word, isLoadingArticles: true });
@@ -81,8 +81,8 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       const articles = await api.lookup(word, groupId);
       set({ articles, isLoadingArticles: false });
 
-      // Record in history
-      if (articles.length > 0) {
+      // Only record in history on explicit user confirmation
+      if (recordHistory && articles.length > 0) {
         const dictNames = articles.map((a) => a.dict_name);
         useHistoryStore.getState().addEntry(word, dictNames);
       }

@@ -18,7 +18,7 @@ import { api } from "../../lib/tauri";
 import { useDictStore } from "../../stores/dictStore";
 import { ConfirmPopover } from "../ui/ConfirmPopover";
 import { CodeEditor } from "./CodeEditor";
-import type { DictMeta } from "../../types";
+import type { DictGroup, DictMeta } from "../../types";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -170,7 +170,7 @@ export function DictsPanel() {
     try {
       const meta = await api.importDict(mdxPath);
       if (cssContent || jsContent) {
-        const dictId = meta.id["0"];
+        const dictId = meta.id;
         await api.updateDictConfig(dictId, {
           custom_css: cssContent || undefined,
           custom_js: jsContent || undefined,
@@ -434,14 +434,238 @@ export function DictsPanel() {
           <AnimatePresence mode="popLayout">
             {dicts.map((dict) => (
               <DictRow
-                key={dict.id["0"]}
+                key={dict.id}
                 dict={dict}
-                expanded={expandedId === dict.id["0"]}
-                onToggle={() => setExpandedId(expandedId === dict.id["0"] ? null : dict.id["0"])}
+                expanded={expandedId === dict.id}
+                onToggle={() => setExpandedId(expandedId === dict.id ? null : dict.id)}
                 onRemove={handleRemove}
               />
             ))}
           </AnimatePresence>
+        </div>
+      )}
+
+      {/* ── Groups ────────────────────────────────── */}
+      <div className="mt-8 border-t border-border pt-6">
+        <GroupsPanel />
+      </div>
+    </div>
+  );
+}
+
+// ── GroupsPanel ────────────────────────────────────────────
+
+function GroupsPanel() {
+  const dicts = useDictStore((s) => s.dicts);
+  const groups = useDictStore((s) => s.groups);
+  const loadGroups = useDictStore((s) => s.loadGroups);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDictIds, setEditDictIds] = useState<Set<string>>(new Set());
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    loadGroups();
+  }, [loadGroups]);
+
+  const startCreate = useCallback(() => {
+    setCreating(true);
+    setEditingId(null);
+    setEditName("");
+    setEditDictIds(new Set());
+  }, []);
+
+  const startEdit = useCallback((group: DictGroup) => {
+    setCreating(false);
+    setEditingId(group.id);
+    setEditName(group.name);
+    setEditDictIds(new Set(group.dict_ids));
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    setEditingId(null);
+    setCreating(false);
+  }, []);
+
+  const toggleDict = useCallback((dictId: string) => {
+    setEditDictIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(dictId)) next.delete(dictId);
+      else next.add(dictId);
+      return next;
+    });
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!editName.trim()) return;
+    setSaving(true);
+    try {
+      const ids = [...editDictIds];
+      if (creating) {
+        await api.createGroup(editName.trim(), ids);
+      } else if (editingId) {
+        await api.updateGroup(editingId, editName.trim(), ids);
+      }
+      await loadGroups();
+      cancelEdit();
+    } catch (e) {
+      console.error("Save group failed:", e);
+    }
+    setSaving(false);
+  }, [editName, editDictIds, creating, editingId, loadGroups, cancelEdit]);
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      try {
+        await api.deleteGroup(id);
+        if (editingId === id) cancelEdit();
+        loadGroups();
+      } catch (e) {
+        console.error("Delete group failed:", e);
+      }
+    },
+    [editingId, cancelEdit, loadGroups],
+  );
+
+  const isEditing = creating || editingId !== null;
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+          Groups
+          {groups.length > 0 && (
+            <span className="ml-2 font-normal normal-case text-text-tertiary">
+              {groups.length}
+            </span>
+          )}
+        </h2>
+        {!isEditing && (
+          <button
+            onClick={startCreate}
+            className="flex h-7 items-center gap-1.5 rounded-[var(--radius-sm)] bg-accent px-2.5 text-xs font-medium text-white transition-colors duration-[var(--duration-fast)] hover:bg-accent/90"
+          >
+            <Plus size={14} />
+            New Group
+          </button>
+        )}
+      </div>
+
+      {/* Edit / create form */}
+      {isEditing && (
+        <div className="mb-4 rounded-[var(--radius-md)] border border-border p-3 space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">Group name</label>
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="e.g. English, Japanese"
+              className="h-8 w-full rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5 text-sm text-text-primary outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">
+              Dictionaries <span className="font-normal text-text-tertiary">({editDictIds.size} selected)</span>
+            </label>
+            {dicts.length > 0 ? (
+              <div className="max-h-40 divide-y divide-border overflow-y-auto rounded-[var(--radius-md)] border border-border">
+                {dicts.map((dict) => {
+                  const did = dict.id;
+                  const checked = editDictIds.has(did);
+                  return (
+                    <button
+                      key={did}
+                      onClick={() => toggleDict(did)}
+                      className="flex h-9 w-full items-center gap-2.5 px-3 text-left transition-colors duration-[var(--duration-fast)] hover:bg-surface-sunken"
+                    >
+                      <span
+                        className={[
+                          "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border text-[9px]",
+                          checked ? "border-accent bg-accent text-white" : "border-border bg-surface-base",
+                        ].join(" ")}
+                      >
+                        {checked && <Check size={9} />}
+                      </span>
+                      <span className="flex-1 truncate text-sm text-text-primary">{dict.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-text-tertiary">No dictionaries imported yet</p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={cancelEdit}
+              className="h-7 rounded-[var(--radius-sm)] px-3 text-xs font-medium text-text-secondary hover:bg-surface-sunken"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !editName.trim()}
+              className="flex h-7 items-center gap-1.5 rounded-[var(--radius-sm)] bg-accent px-3 text-xs font-medium text-white transition-colors duration-[var(--duration-fast)] hover:bg-accent/90 disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={12} className="animate-spin" /> : creating ? "Create" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Group list */}
+      {groups.length === 0 && !isEditing ? (
+        <p className="py-6 text-center text-xs text-text-tertiary">
+          No groups yet. Create a group to organize dictionaries for lookup.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {groups.map((group) => {
+            const gid = group.id;
+            const isActive = editingId === gid;
+            return (
+              <div
+                key={gid}
+                className={[
+                  "flex items-center gap-3 rounded-[var(--radius-md)] border px-3.5 py-2.5 transition-colors duration-[var(--duration-fast)]",
+                  isActive ? "border-accent/30 bg-accent/5" : "border-border hover:bg-surface-sunken",
+                ].join(" ")}
+              >
+                <div className="flex-1 overflow-hidden">
+                  <p className="truncate text-sm font-medium text-text-primary">{group.name}</p>
+                  <p className="text-[11px] text-text-tertiary">
+                    {group.dict_ids.length} {group.dict_ids.length === 1 ? "dictionary" : "dictionaries"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => startEdit(group)}
+                  className="text-xs font-medium text-text-tertiary hover:text-accent"
+                >
+                  Edit
+                </button>
+                <ConfirmPopover
+                  open={false}
+                  onClose={() => {}}
+                  onConfirm={() => handleDelete(gid)}
+                  title="Delete group?"
+                  description="Dictionaries will not be removed."
+                  confirmLabel="Delete"
+                  variant="danger"
+                >
+                  <button
+                    onClick={() => handleDelete(gid)}
+                    className="text-text-tertiary hover:text-error"
+                    aria-label="Delete group"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </ConfirmPopover>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -462,7 +686,7 @@ function DictRow({
   onRemove: (id: string) => void;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const dictId = dict.id["0"];
+  const dictId = dict.id;
 
   return (
     <motion.div
@@ -542,36 +766,84 @@ function DictDetail({ dictId, dictMeta }: { dictId: string; dictMeta: DictMeta }
   const [displayName, setDisplayName] = useState(dictMeta.title);
   const [customCss, setCustomCss] = useState("");
   const [customJs, setCustomJs] = useState("");
+  const [cssPath, setCssPath] = useState("");
+  const [jsPath, setJsPath] = useState("");
+  const [mddPaths, setMddPaths] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   // Load existing config
   useEffect(() => {
+    console.debug("[DictDetail] loading config for", dictId);
     api.getDictConfig(dictId).then((cfg) => {
+      console.debug("[DictDetail] got config:", cfg);
       if (cfg.display_name) setDisplayName(cfg.display_name);
       if (cfg.custom_css) setCustomCss(cfg.custom_css);
       if (cfg.custom_js) setCustomJs(cfg.custom_js);
-    }).catch(() => {
-      // Config may not exist yet
+      if (cfg.css_path) setCssPath(cfg.css_path);
+      if (cfg.js_path) setJsPath(cfg.js_path);
+      if (cfg.extra_mdd_paths?.length) setMddPaths(cfg.extra_mdd_paths);
+    }).catch((e) => {
+      console.error("[DictDetail] getDictConfig failed:", e);
     });
   }, [dictId]);
 
+  const handleBrowseFile = useCallback(
+    async (
+      setter: (v: string) => void,
+      filters?: { name: string; extensions: string[] }[],
+    ) => {
+      const selected = await open({ directory: false, multiple: false, filters });
+      if (selected && typeof selected === "string") setter(selected);
+    },
+    [],
+  );
+
+  const handleAddMdd = useCallback(async () => {
+    const selected = await open({
+      directory: false,
+      multiple: true,
+      filters: [{ name: "MDD Resource", extensions: ["mdd"] }],
+    });
+    if (!selected) return;
+    const paths = Array.isArray(selected) ? selected : [selected];
+    setMddPaths((prev) => {
+      const existing = new Set(prev);
+      return [...prev, ...paths.filter((p) => typeof p === "string" && !existing.has(p))];
+    });
+  }, []);
+
+  const removeMdd = useCallback((index: number) => {
+    setMddPaths((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
   const handleSave = useCallback(async () => {
+    const payload = {
+      display_name: displayName,
+      custom_css: customCss,
+      custom_js: customJs,
+      js_enabled: customJs.length > 0,
+      css_path: cssPath || undefined,
+      js_path: jsPath || undefined,
+      extra_mdd_paths: mddPaths,
+    };
+    console.debug("[DictDetail] saving config:", dictId, payload);
     setSaving(true);
     try {
-      await api.updateDictConfig(dictId, {
-        display_name: displayName !== dictMeta.title ? displayName : undefined,
-        custom_css: customCss || undefined,
-        custom_js: customJs || undefined,
-        js_enabled: customJs.length > 0 ? true : undefined,
-      });
+      await api.updateDictConfig(dictId, payload);
+      console.debug("[DictDetail] save ok");
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
     } catch (e) {
-      console.error("Save failed:", e);
+      console.error("[DictDetail] save failed:", e);
     }
     setSaving(false);
-  }, [dictId, displayName, dictMeta.title, customCss, customJs]);
+  }, [dictId, displayName, dictMeta.title, customCss, customJs, cssPath, jsPath, mddPaths]);
+
+  const inputCls =
+    "h-8 w-full rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5 text-sm text-text-primary outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent";
+  const browseBtn =
+    "flex h-8 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-border px-2 text-xs font-medium text-text-secondary transition-colors duration-[var(--duration-fast)] hover:bg-surface-sunken";
 
   return (
     <div className="space-y-3">
@@ -592,20 +864,93 @@ function DictDetail({ dictId, dictMeta }: { dictId: string; dictMeta: DictMeta }
       {/* Display name */}
       <div>
         <label className="mb-1 block text-xs font-medium text-text-secondary">Display name</label>
-        <input
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          className="h-8 w-full rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5 text-sm text-text-primary outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent"
-        />
+        <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={inputCls} />
       </div>
 
-      {/* CSS */}
+      {/* Extra MDD paths */}
+      <div>
+        <div className="mb-1 flex items-center justify-between">
+          <label className="text-xs font-medium text-text-secondary">
+            Extra MDD files <span className="font-normal text-text-tertiary">(optional)</span>
+          </label>
+          <button onClick={handleAddMdd} className="text-xs font-medium text-accent hover:underline">
+            + Add
+          </button>
+        </div>
+        {mddPaths.length > 0 ? (
+          <div className="space-y-1">
+            {mddPaths.map((p, i) => (
+              <div key={p} className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-border px-2.5 py-1.5">
+                <FileText size={12} className="shrink-0 text-text-tertiary" />
+                <span className="flex-1 truncate font-mono text-[11px] text-text-primary">{p.split("/").pop()}</span>
+                <button onClick={() => removeMdd(i)} className="shrink-0 text-text-tertiary hover:text-error">
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-text-tertiary">Auto-detected MDD files are used by default</p>
+        )}
+      </div>
+
+      {/* CSS file path */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-text-secondary">
+          CSS file <span className="font-normal text-text-tertiary">(optional)</span>
+        </label>
+        <div className="flex gap-1.5">
+          <div className="flex h-8 flex-1 items-center overflow-hidden rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5">
+            {cssPath ? (
+              <div className="flex flex-1 items-center gap-1.5 overflow-hidden">
+                <span className="flex-1 truncate font-mono text-[11px] text-text-primary">{cssPath.split("/").pop()}</span>
+                <button onClick={() => setCssPath("")} className="shrink-0 text-text-tertiary hover:text-text-secondary"><X size={11} /></button>
+              </div>
+            ) : (
+              <span className="text-[11px] text-text-tertiary">None</span>
+            )}
+          </div>
+          <button
+            onClick={() => handleBrowseFile(setCssPath, [{ name: "CSS", extensions: ["css"] }])}
+            className={browseBtn}
+          >
+            Browse
+          </button>
+        </div>
+      </div>
+
+      {/* JS file path */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-text-secondary">
+          JS file <span className="font-normal text-text-tertiary">(optional)</span>
+        </label>
+        <div className="flex gap-1.5">
+          <div className="flex h-8 flex-1 items-center overflow-hidden rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5">
+            {jsPath ? (
+              <div className="flex flex-1 items-center gap-1.5 overflow-hidden">
+                <span className="flex-1 truncate font-mono text-[11px] text-text-primary">{jsPath.split("/").pop()}</span>
+                <button onClick={() => setJsPath("")} className="shrink-0 text-text-tertiary hover:text-text-secondary"><X size={11} /></button>
+              </div>
+            ) : (
+              <span className="text-[11px] text-text-tertiary">None</span>
+            )}
+          </div>
+          <button
+            onClick={() => handleBrowseFile(setJsPath, [{ name: "JavaScript", extensions: ["js"] }])}
+            className={browseBtn}
+          >
+            Browse
+          </button>
+        </div>
+      </div>
+
+      {/* Custom CSS (inline) */}
       <div>
         <label className="mb-1 block text-xs font-medium text-text-secondary">Custom CSS</label>
         <CodeEditor value={customCss} onChange={setCustomCss} language="css" placeholder="/* article styles */" minHeight={50} maxHeight={120} />
       </div>
 
-      {/* JS */}
+      {/* Custom JS (inline) */}
       <div>
         <label className="mb-1 block text-xs font-medium text-text-secondary">Custom JS</label>
         <CodeEditor value={customJs} onChange={setCustomJs} language="javascript" placeholder="// runs inside iframe" minHeight={50} maxHeight={120} />

@@ -78,7 +78,7 @@ export function DictListPage() {
               <AnimatePresence mode="popLayout">
                 {dicts.map((dict) => (
                   <motion.div
-                    key={dict.id["0"]}
+                    key={dict.id}
                     layout
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}

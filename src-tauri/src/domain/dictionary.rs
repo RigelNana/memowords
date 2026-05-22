@@ -77,3 +77,51 @@ pub struct DictResource {
     pub data: Vec<u8>,
     pub mime_type: String,
 }
+
+/// Per-dictionary configuration: display, styling, extra resources.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DictConfig {
+    pub dict_id: DictId,
+    pub display_name: Option<String>,
+    pub priority: i32,
+    pub dark_mode: String,
+    pub custom_css: String,
+    pub custom_js: String,
+    pub js_enabled: bool,
+    pub css_path: Option<String>,
+    pub js_path: Option<String>,
+    pub extra_mdd_paths: Vec<String>,
+}
+
+impl DictConfig {
+    /// Create a default config for a newly imported dictionary.
+    pub fn default_for(dict_id: &DictId) -> Self {
+        Self {
+            dict_id: dict_id.clone(),
+            display_name: None,
+            priority: 5,
+            dark_mode: "auto".to_string(),
+            custom_css: String::new(),
+            custom_js: String::new(),
+            js_enabled: false,
+            css_path: None,
+            js_path: None,
+            extra_mdd_paths: Vec::new(),
+        }
+    }
+}
+
+/// Partial update for DictConfig — only supplied fields are updated.
+/// All fields use flat Option: None = don't update, Some("") = clear to default.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DictConfigUpdate {
+    pub display_name: Option<String>,
+    pub priority: Option<i32>,
+    pub dark_mode: Option<String>,
+    pub custom_css: Option<String>,
+    pub custom_js: Option<String>,
+    pub js_enabled: Option<bool>,
+    pub css_path: Option<String>,
+    pub js_path: Option<String>,
+    pub extra_mdd_paths: Option<Vec<String>>,
+}

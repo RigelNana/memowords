@@ -135,7 +135,7 @@ export function CommandPalette() {
               >
                 {candidates.slice(0, 10).map((c, i) => (
                   <CandidateItem
-                    key={`${c.headword}-${c.dict_id["0"]}`}
+                    key={`${c.headword}-${c.dict_id}`}
                     headword={c.headword}
                     isActive={i === selectedIndex}
                     index={i}

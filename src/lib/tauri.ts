@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  DetectedResources,
   DictArticle,
   DictConfig,
   DictConfigUpdate,
@@ -15,6 +16,9 @@ export const api = {
 
   importDict: (mdxPath: string) =>
     invoke<DictMeta>("import_dict", { mdxPath }),
+
+  detectDictResources: (mdxPath: string) =>
+    invoke<DetectedResources>("detect_dict_resources", { mdxPath }),
 
   listDicts: () => invoke<DictMeta[]>("list_dicts"),
 

@@ -23,7 +23,7 @@ export function PreviewFrame({
     setLoading(true);
     try {
       const articles = await api.lookup(word);
-      const match = articles.find((a) => a.dict_id["0"] === dictId);
+      const match = articles.find((a) => a.dict_id === dictId);
       setHtml(match?.html ?? null);
     } catch (e) {
       console.error("Preview failed:", e);

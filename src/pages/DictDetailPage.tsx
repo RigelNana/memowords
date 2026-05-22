@@ -62,7 +62,7 @@ export function DictDetailPage() {
   useEffect(() => {
     if (!id) return;
 
-    const found = dicts.find((d) => d.id["0"] === id);
+    const found = dicts.find((d) => d.id === id);
     if (found) setDict(found);
 
     Promise.all([

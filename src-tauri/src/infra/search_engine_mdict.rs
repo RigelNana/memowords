@@ -88,7 +88,19 @@ impl SearchEngine for MdictSearchEngine {
 
             match dict.lookup(word) {
                 Ok(results) => {
+                    tracing::debug!(
+                        dict = %dict.title(),
+                        word,
+                        article_count = results.len(),
+                        sizes = ?results.iter().map(|r| r.len()).collect::<Vec<_>>(),
+                        "lookup results"
+                    );
                     for html in results {
+                        // Skip unresolved @@@LINK entries
+                        if html.trim().starts_with("@@@LINK=") {
+                            tracing::debug!(dict = %dict.title(), word, link = %html.trim(), "skipping dangling @@@LINK");
+                            continue;
+                        }
                         articles.push(DictArticle {
                             dict_id: dict_id.clone(),
                             dict_name: dict.title().to_string(),
