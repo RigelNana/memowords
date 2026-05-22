@@ -152,24 +152,27 @@ pub fn extract_record(file_data: &[u8], info: &RecordInfo, encoding: &DictEncodi
 }
 
 /// Decode raw record bytes to a UTF-8 string using the dictionary encoding.
+/// Strips trailing null bytes and whitespace (MDX records are null-terminated).
 fn decode_record_text(data: &[u8], encoding: &DictEncoding) -> Result<String> {
-    match encoding {
-        DictEncoding::Utf8 => Ok(String::from_utf8_lossy(data).into_owned()),
+    let s = match encoding {
+        DictEncoding::Utf8 => String::from_utf8_lossy(data).into_owned(),
         DictEncoding::Utf16Le => {
             let (cow, _, had_errors) = encoding_rs::UTF_16LE.decode(data);
             if had_errors {
                 tracing::warn!("UTF-16LE decoding had errors");
             }
-            Ok(cow.into_owned())
+            cow.into_owned()
         }
         DictEncoding::Gb18030 => {
             let (cow, _, had_errors) = encoding_rs::GB18030.decode(data);
             if had_errors {
                 tracing::warn!("GB18030 decoding had errors");
             }
-            Ok(cow.into_owned())
+            cow.into_owned()
         }
-    }
+    };
+    // Strip trailing null bytes and whitespace (MDX null-terminates records)
+    Ok(s.trim_end_matches('\0').trim_end().to_string())
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { ArticleFrame } from "./ArticleFrame";
+import { api } from "../../lib/tauri";
 
 interface DictSectionProps {
   dictName: string;
@@ -11,6 +12,53 @@ interface DictSectionProps {
 
 export function DictSection({ dictName, dictId, html, id }: DictSectionProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [customCss, setCustomCss] = useState<string | undefined>(undefined);
+  const [customJs, setCustomJs] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadConfig() {
+      try {
+        const config = await api.getDictConfig(dictId);
+
+        // Load CSS from file path if configured
+        if (config.css_path) {
+          try {
+            const cssData = await api.getResource(dictId, config.css_path);
+            if (cssData) {
+              const cssText = new TextDecoder().decode(new Uint8Array(cssData));
+              if (!cancelled) setCustomCss(cssText);
+            }
+          } catch (e) {
+            // CSS file load failed — skip silently
+          }
+        } else if (config.custom_css) {
+          if (!cancelled) setCustomCss(config.custom_css);
+        }
+
+        // Load JS if enabled
+        if (config.js_enabled) {
+          if (config.js_path) {
+            try {
+              const jsData = await api.getResource(dictId, config.js_path);
+              if (jsData) {
+                const jsText = new TextDecoder().decode(new Uint8Array(jsData));
+                if (!cancelled) setCustomJs(jsText);
+              }
+            } catch (e) {
+              // JS file load failed — skip silently
+            }
+          } else if (config.custom_js) {
+            if (!cancelled) setCustomJs(config.custom_js);
+          }
+        }
+      } catch (e) {
+        // Config load failed — skip silently
+      }
+    }
+    loadConfig();
+    return () => { cancelled = true; };
+  }, [dictId]);
 
   return (
     <section id={id} className="border-b border-border last:border-b-0">
@@ -44,7 +92,7 @@ export function DictSection({ dictName, dictId, html, id }: DictSectionProps) {
       >
         <div className="overflow-hidden">
           <div className="px-5 py-4">
-            <ArticleFrame html={html} dictId={dictId} />
+            <ArticleFrame html={html} dictId={dictId} customCss={customCss} customJs={customJs} />
           </div>
         </div>
       </div>

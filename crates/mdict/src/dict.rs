@@ -216,13 +216,6 @@ impl MdxDict {
             return Ok(vec![]);
         }
 
-        tracing::debug!(
-            word,
-            initial_count = initial.len(),
-            headwords = ?initial.iter().take(10).map(|&i| &self.entries[i].headword).collect::<Vec<_>>(),
-            "lookup: index matched"
-        );
-
         // Queue of entry indices still to process (GoldenDict calls this "chain")
         let mut queue: Vec<usize> = initial;
         let mut seen_indices: HashSet<usize> = HashSet::new();
@@ -301,23 +294,39 @@ impl MdxDict {
     }
 
     /// Prefix search: find headwords starting with the given prefix.
-    /// Returns up to `limit` headwords (via FST automaton, O(k) where k = results).
+    /// Returns up to `limit` unique headwords (via FST automaton, O(k) where k = results).
     pub fn prefix_search(&self, prefix: &str, limit: usize) -> Vec<&str> {
-        let indices = self.index.prefix_search(prefix, limit);
-        indices
-            .iter()
-            .map(|&i| self.entries[i].headword.as_str())
-            .collect()
+        let indices = self.index.prefix_search(prefix, limit * 3);
+        let mut seen = std::collections::HashSet::new();
+        let mut results = Vec::new();
+        for &i in &indices {
+            let hw = self.entries[i].headword.as_str();
+            if seen.insert(hw) {
+                results.push(hw);
+                if results.len() >= limit {
+                    break;
+                }
+            }
+        }
+        results
     }
 
     /// Fuzzy search: find headwords within `max_distance` edits.
-    /// Returns up to `limit` headwords.
+    /// Returns up to `limit` unique headwords.
     pub fn fuzzy_search(&self, word: &str, max_distance: u32, limit: usize) -> Vec<&str> {
-        let indices = self.index.fuzzy_search(word, max_distance, limit);
-        indices
-            .iter()
-            .map(|&i| self.entries[i].headword.as_str())
-            .collect()
+        let indices = self.index.fuzzy_search(word, max_distance, limit * 3);
+        let mut seen = std::collections::HashSet::new();
+        let mut results = Vec::new();
+        for &i in &indices {
+            let hw = self.entries[i].headword.as_str();
+            if seen.insert(hw) {
+                results.push(hw);
+                if results.len() >= limit {
+                    break;
+                }
+            }
+        }
+        results
     }
 
     /// Load raw article text for an entry by its index.

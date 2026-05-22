@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -32,6 +33,7 @@ impl MdictSearchEngine {
 impl SearchEngine for MdictSearchEngine {
     fn prefix_search(&self, query: &str, dict_ids: &[DictId], limit: usize) -> Result<Vec<SearchCandidate>> {
         let mut results = Vec::new();
+        let mut seen: HashSet<(String, String)> = HashSet::new();
 
         for dict_id in dict_ids {
             let Some(dict) = self.get_dict(dict_id) else {
@@ -40,6 +42,10 @@ impl SearchEngine for MdictSearchEngine {
 
             let headwords = dict.prefix_search(query, limit);
             for hw in headwords {
+                let key = (hw.to_string(), dict_id.as_str().to_string());
+                if !seen.insert(key) {
+                    continue;
+                }
                 results.push(SearchCandidate {
                     headword: hw.to_string(),
                     dict_id: dict_id.clone(),
@@ -56,6 +62,7 @@ impl SearchEngine for MdictSearchEngine {
 
     fn fuzzy_search(&self, query: &str, dict_ids: &[DictId], limit: usize) -> Result<Vec<SearchCandidate>> {
         let mut results = Vec::new();
+        let mut seen: HashSet<(String, String)> = HashSet::new();
 
         for dict_id in dict_ids {
             let Some(dict) = self.get_dict(dict_id) else {
@@ -64,6 +71,10 @@ impl SearchEngine for MdictSearchEngine {
 
             let headwords = dict.fuzzy_search(query, 1, limit);
             for hw in headwords {
+                let key = (hw.to_string(), dict_id.as_str().to_string());
+                if !seen.insert(key) {
+                    continue;
+                }
                 results.push(SearchCandidate {
                     headword: hw.to_string(),
                     dict_id: dict_id.clone(),
@@ -88,17 +99,9 @@ impl SearchEngine for MdictSearchEngine {
 
             match dict.lookup(word) {
                 Ok(results) => {
-                    tracing::debug!(
-                        dict = %dict.title(),
-                        word,
-                        article_count = results.len(),
-                        sizes = ?results.iter().map(|r| r.len()).collect::<Vec<_>>(),
-                        "lookup results"
-                    );
                     for html in results {
                         // Skip unresolved @@@LINK entries
                         if html.trim().starts_with("@@@LINK=") {
-                            tracing::debug!(dict = %dict.title(), word, link = %html.trim(), "skipping dangling @@@LINK");
                             continue;
                         }
                         articles.push(DictArticle {

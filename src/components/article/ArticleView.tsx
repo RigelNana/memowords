@@ -1,8 +1,14 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useSearchStore } from "../../stores/searchStore";
 import { DictTabBar } from "./DictTabBar";
 import { DictSection } from "./DictSection";
 import { Skeleton } from "../ui/Skeleton";
+
+interface GroupedArticle {
+  dict_id: string;
+  dict_name: string;
+  htmlParts: string[];
+}
 
 export function ArticleView() {
   const articles = useSearchStore((s) => s.articles);
@@ -12,7 +18,21 @@ export function ArticleView() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState(0);
 
-  const dictNames = articles.map((a) => a.dict_name);
+  // Group articles by dict_id so each dictionary is one collapsible section
+  const grouped = useMemo<GroupedArticle[]>(() => {
+    const map = new Map<string, GroupedArticle>();
+    for (const a of articles) {
+      let group = map.get(a.dict_id);
+      if (!group) {
+        group = { dict_id: a.dict_id, dict_name: a.dict_name, htmlParts: [] };
+        map.set(a.dict_id, group);
+      }
+      group.htmlParts.push(a.html);
+    }
+    return Array.from(map.values());
+  }, [articles]);
+
+  const dictNames = grouped.map((g) => g.dict_name);
 
   const handleTabClick = useCallback(
     (index: number) => {
@@ -56,13 +76,13 @@ export function ArticleView() {
         onTabClick={handleTabClick}
       />
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {articles.map((article, i) => (
+        {grouped.map((group, i) => (
           <DictSection
-            key={`${article.dict_name}-${i}`}
+            key={`${group.dict_id}-${i}`}
             id={`dict-section-${i}`}
-            dictName={article.dict_name}
-            dictId={article.dict_id}
-            html={article.html}
+            dictName={group.dict_name}
+            dictId={group.dict_id}
+            html={group.htmlParts.join('<hr style="margin:1em 0;border:none;border-top:1px solid #e0e0e0">')}
           />
         ))}
       </div>
