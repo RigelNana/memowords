@@ -39,29 +39,34 @@ export function DictGroupSwitcher({ collapsed }: DictGroupSwitcherProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
+  const labelStyle = {
+    opacity: collapsed ? 0 : 1,
+    transition: `opacity var(--duration-fast) var(--ease-out-quart)`,
+  } as const;
+
   return (
     <div ref={containerRef} className="relative mx-2 mb-2">
       <button
         onClick={() => setOpen(!open)}
-        className="flex h-10 w-full items-center gap-2 rounded-[var(--radius-sm)] px-3 text-sm text-text-secondary transition-colors duration-[var(--duration-fast)] hover:bg-surface-sunken"
+        className="flex h-10 w-full items-center gap-2 overflow-hidden rounded-[var(--radius-sm)] px-3 text-sm text-text-secondary transition-colors duration-[var(--duration-fast)] hover:bg-surface-sunken"
       >
         <Library size={16} className="shrink-0" />
-        {!collapsed && (
-          <>
-            <span className="flex-1 truncate text-left font-medium">
-              {activeGroup ? activeGroup.name : "All Dicts"}
-            </span>
-            <ChevronUp
-              size={14}
-              className="shrink-0 text-text-tertiary"
-              style={{
-                transform: open ? "rotate(0deg)" : "rotate(180deg)",
-                transition:
-                  "transform 200ms cubic-bezier(0.25, 1, 0.5, 1)",
-              }}
-            />
-          </>
-        )}
+        <span
+          className="flex-1 truncate whitespace-nowrap text-left font-medium"
+          style={labelStyle}
+        >
+          {activeGroup ? activeGroup.name : "All Dicts"}
+        </span>
+        <ChevronUp
+          size={14}
+          className="shrink-0 text-text-tertiary"
+          style={{
+            opacity: collapsed ? 0 : 1,
+            transform: open ? "rotate(0deg)" : "rotate(180deg)",
+            transition:
+              "transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity var(--duration-fast) var(--ease-out-quart)",
+          }}
+        />
       </button>
 
       <AnimatePresence>

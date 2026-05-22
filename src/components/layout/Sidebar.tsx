@@ -19,9 +19,14 @@ const navItems = [
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const openCommandPalette = useUiStore((s) => s.openCommandPalette);
 
+  const labelStyle = {
+    opacity: collapsed ? 0 : 1,
+    transition: `opacity var(--duration-fast) var(--ease-out-quart)`,
+  } as const;
+
   return (
     <aside
-      className="flex h-full flex-col border-r border-border bg-surface-raised"
+      className="flex h-full flex-col overflow-hidden border-r border-border bg-surface-raised"
       style={{
         width: collapsed ? 56 : 240,
         transition: `width var(--duration-slow) var(--ease-out-expo)`,
@@ -29,12 +34,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     >
       {/* Logo */}
       <div className="flex h-12 items-center gap-2 px-4">
-        <span className="text-accent text-lg font-semibold">◆</span>
-        {!collapsed && (
-          <span className="text-text-primary text-sm font-semibold tracking-tight">
-            MemoWords
-          </span>
-        )}
+        <span className="text-accent shrink-0 text-lg font-semibold">◆</span>
+        <span
+          className="text-text-primary whitespace-nowrap text-sm font-semibold tracking-tight"
+          style={labelStyle}
+        >
+          MemoWords
+        </span>
       </div>
 
       {/* Search trigger */}
@@ -42,15 +48,19 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         onClick={openCommandPalette}
         className="mx-2 mt-2 flex h-10 items-center gap-3 rounded-[var(--radius-sm)] bg-surface-sunken px-3 text-sm text-text-tertiary transition-colors duration-[var(--duration-fast)] hover:bg-surface-base"
       >
-        <Search size={16} />
-        {!collapsed && (
-          <>
-            <span className="flex-1 text-left">Search...</span>
-            <kbd className="rounded border border-border bg-surface-base px-1.5 py-0.5 text-[10px] font-medium">
-              ⌘K
-            </kbd>
-          </>
-        )}
+        <Search size={16} className="shrink-0" />
+        <span
+          className="flex-1 whitespace-nowrap text-left"
+          style={labelStyle}
+        >
+          Search...
+        </span>
+        <kbd
+          className="shrink-0 whitespace-nowrap rounded border border-border bg-surface-base px-1.5 py-0.5 text-[10px] font-medium"
+          style={labelStyle}
+        >
+          ⌘K
+        </kbd>
       </button>
 
       {/* Navigation */}
@@ -75,8 +85,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 {isActive && (
                   <span className="bg-accent absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full" />
                 )}
-                <Icon size={18} />
-                {!collapsed && <span>{label}</span>}
+                <Icon size={18} className="shrink-0" />
+                <span className="whitespace-nowrap" style={labelStyle}>
+                  {label}
+                </span>
               </>
             )}
           </NavLink>
