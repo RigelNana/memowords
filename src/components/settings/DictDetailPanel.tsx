@@ -19,8 +19,8 @@ export function DictDetailPanel({
   const [displayName, setDisplayName] = useState(dictMeta.title);
   const [customCss, setCustomCss] = useState("");
   const [customJs, setCustomJs] = useState("");
-  const [cssPath, setCssPath] = useState("");
-  const [jsPath, setJsPath] = useState("");
+  const [cssPaths, setCssPaths] = useState<string[]>([]);
+  const [jsPaths, setJsPaths] = useState<string[]>([]);
   const [mddPaths, setMddPaths] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -31,8 +31,8 @@ export function DictDetailPanel({
       if (cfg.display_name) setDisplayName(cfg.display_name);
       if (cfg.custom_css) setCustomCss(cfg.custom_css);
       if (cfg.custom_js) setCustomJs(cfg.custom_js);
-      if (cfg.css_path) setCssPath(cfg.css_path);
-      if (cfg.js_path) setJsPath(cfg.js_path);
+      if (cfg.css_paths?.length) setCssPaths(cfg.css_paths);
+      if (cfg.js_paths?.length) setJsPaths(cfg.js_paths);
       if (cfg.extra_mdd_paths?.length) setMddPaths(cfg.extra_mdd_paths);
     }).catch((e) => {
       console.error("[DictDetailPanel] getDictConfig failed:", e);
@@ -44,22 +44,11 @@ export function DictDetailPanel({
     setDisplayName(dictMeta.title);
     setCustomCss("");
     setCustomJs("");
-    setCssPath("");
-    setJsPath("");
+    setCssPaths([]);
+    setJsPaths([]);
     setMddPaths([]);
     setSaved(false);
   }, [dictId, dictMeta.title]);
-
-  const handleBrowseFile = useCallback(
-    async (
-      setter: (v: string) => void,
-      filters?: { name: string; extensions: string[] }[],
-    ) => {
-      const selected = await open({ directory: false, multiple: false, filters });
-      if (selected && typeof selected === "string") setter(selected);
-    },
-    [],
-  );
 
   const handleSave = useCallback(async () => {
     const payload = {
@@ -67,8 +56,8 @@ export function DictDetailPanel({
       custom_css: customCss,
       custom_js: customJs,
       js_enabled: customJs.length > 0,
-      css_path: cssPath || undefined,
-      js_path: jsPath || undefined,
+      css_paths: cssPaths.length > 0 ? cssPaths : undefined,
+      js_paths: jsPaths.length > 0 ? jsPaths : undefined,
       extra_mdd_paths: mddPaths,
     };
     setSaving(true);
@@ -80,7 +69,7 @@ export function DictDetailPanel({
       console.error("[DictDetailPanel] save failed:", e);
     }
     setSaving(false);
-  }, [dictId, displayName, customCss, customJs, cssPath, jsPath, mddPaths]);
+  }, [dictId, displayName, customCss, customJs, cssPaths, jsPaths, mddPaths]);
 
   return (
     <div className="flex flex-col gap-5 p-5">
@@ -118,18 +107,24 @@ export function DictDetailPanel({
         />
       </Field>
 
-      {/* CSS path */}
-      <Field label="CSS File Path">
+      {/* CSS paths */}
+      <Field label="CSS File Paths">
         <div className="flex gap-2">
           <input
             type="text"
-            value={cssPath}
-            onChange={(e) => setCssPath(e.target.value)}
-            placeholder="Auto-detected or enter path..."
+            value={cssPaths.join("; ")}
+            onChange={(e) => setCssPaths(e.target.value.split(";").map(s => s.trim()).filter(Boolean))}
+            placeholder="Semicolon-separated paths to .css files"
             className="h-8 flex-1 rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-accent"
           />
           <button
-            onClick={() => handleBrowseFile(setCssPath, [{ name: "CSS", extensions: ["css"] }])}
+            onClick={async () => {
+              const selected = await open({ directory: false, multiple: true, filters: [{ name: "CSS", extensions: ["css"] }] });
+              if (selected) {
+                const paths = Array.isArray(selected) ? selected : [selected];
+                setCssPaths(prev => [...new Set([...prev, ...paths])]);
+              }
+            }}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-border text-text-tertiary hover:bg-surface-sunken hover:text-text-secondary"
           >
             <FolderOpen size={14} />
@@ -137,18 +132,24 @@ export function DictDetailPanel({
         </div>
       </Field>
 
-      {/* JS path */}
-      <Field label="JS File Path">
+      {/* JS paths */}
+      <Field label="JS File Paths">
         <div className="flex gap-2">
           <input
             type="text"
-            value={jsPath}
-            onChange={(e) => setJsPath(e.target.value)}
-            placeholder="Auto-detected or enter path..."
+            value={jsPaths.join("; ")}
+            onChange={(e) => setJsPaths(e.target.value.split(";").map(s => s.trim()).filter(Boolean))}
+            placeholder="Semicolon-separated paths to .js files"
             className="h-8 flex-1 rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-accent"
           />
           <button
-            onClick={() => handleBrowseFile(setJsPath, [{ name: "JavaScript", extensions: ["js"] }])}
+            onClick={async () => {
+              const selected = await open({ directory: false, multiple: true, filters: [{ name: "JavaScript", extensions: ["js"] }] });
+              if (selected) {
+                const paths = Array.isArray(selected) ? selected : [selected];
+                setJsPaths(prev => [...new Set([...prev, ...paths])]);
+              }
+            }}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-border text-text-tertiary hover:bg-surface-sunken hover:text-text-secondary"
           >
             <FolderOpen size={14} />

@@ -43,8 +43,8 @@ export interface DictConfig {
   custom_css: string;
   custom_js: string;
   js_enabled: boolean;
-  css_path: string | null;
-  js_path: string | null;
+  css_paths: string[];
+  js_paths: string[];
   extra_mdd_paths: string[];
 }
 
@@ -55,8 +55,8 @@ export interface DictConfigUpdate {
   custom_css?: string;
   custom_js?: string;
   js_enabled?: boolean;
-  css_path?: string;
-  js_path?: string;
+  css_paths?: string[];
+  js_paths?: string[];
   extra_mdd_paths?: string[];
 }
 
@@ -68,8 +68,8 @@ export interface DictFileInfo {
 }
 
 export interface DetectedResources {
-  css_path: string | null;
-  js_path: string | null;
+  css_paths: string[];
+  js_paths: string[];
   mdd_paths: string[];
 }
 

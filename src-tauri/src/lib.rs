@@ -62,7 +62,15 @@ pub fn run() {
 
             match engine.load_resource(&dict_id, &resource_path) {
                 Ok(Some(resource)) => {
-                    tracing::debug!(dict_id = %dict_id_str, path = %resource_path, mime = %resource.mime_type, size = resource.data.len(), "mdict:// resource OK");
+                    let head: Vec<u8> = resource.data.iter().take(16).copied().collect();
+                    tracing::info!(
+                        dict_id = %dict_id_str,
+                        path = %resource_path,
+                        mime = %resource.mime_type,
+                        size = resource.data.len(),
+                        head_hex = %format!("{:02x?}", head),
+                        "mdict:// resource OK"
+                    );
                     tauri::http::Response::builder()
                         .status(200)
                         .header("Content-Type", &resource.mime_type)

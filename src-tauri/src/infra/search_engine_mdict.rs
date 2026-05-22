@@ -145,17 +145,32 @@ impl SearchEngine for MdictSearchEngine {
     }
 
     fn load_resource(&self, dict_id: &DictId, path: &str) -> Result<Option<DictResource>> {
+        tracing::debug!(dict_id = %dict_id, path = %path, "SearchEngine::load_resource called");
         let Some(dict) = self.get_dict(dict_id) else {
+            tracing::warn!(dict_id = %dict_id, "SearchEngine::load_resource: dict not loaded");
             return Ok(None);
         };
 
         match dict.load_resource(path) {
             Ok(data) => {
                 let mime = guess_mime(path);
+                tracing::debug!(
+                    dict_id = %dict_id,
+                    path = %path,
+                    mime = %mime,
+                    data_len = data.len(),
+                    "SearchEngine::load_resource: OK"
+                );
                 Ok(Some(DictResource { data, mime_type: mime }))
             }
-            Err(mdict::Error::KeyNotFound(_)) => Ok(None),
-            Err(e) => Err(e.into()),
+            Err(mdict::Error::KeyNotFound(key)) => {
+                tracing::warn!(dict_id = %dict_id, path = %path, key = %key, "SearchEngine::load_resource: key not found");
+                Ok(None)
+            }
+            Err(e) => {
+                tracing::error!(dict_id = %dict_id, path = %path, error = %e, "SearchEngine::load_resource: ERROR");
+                Err(e.into())
+            }
         }
     }
 

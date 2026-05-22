@@ -155,7 +155,7 @@ impl DictRepo for SqliteDictRepo {
 
     async fn get_dict_config(&self, dict_id: &DictId) -> Result<DictConfig> {
         let row = sqlx::query_as::<_, DictConfigRow>(
-            "SELECT dict_id, display_name, priority, dark_mode, custom_css, custom_js, js_enabled, css_path, js_path, extra_mdd_paths FROM dict_config WHERE dict_id = ?"
+            "SELECT dict_id, display_name, priority, dark_mode, custom_css, custom_js, js_enabled, css_paths, js_paths, extra_mdd_paths FROM dict_config WHERE dict_id = ?"
         )
         .bind(dict_id.as_str())
         .fetch_optional(&self.pool)
@@ -211,13 +211,13 @@ impl DictRepo for SqliteDictRepo {
             sets.push("js_enabled = ?");
             binds.push(if je { "1".into() } else { "0".into() });
         }
-        if let Some(ref cp) = update.css_path {
-            sets.push("css_path = ?");
-            binds.push(cp.clone());
+        if let Some(ref cp) = update.css_paths {
+            sets.push("css_paths = ?");
+            binds.push(serde_json::to_string(cp).unwrap_or_else(|_| "[]".into()));
         }
-        if let Some(ref jp) = update.js_path {
-            sets.push("js_path = ?");
-            binds.push(jp.clone());
+        if let Some(ref jp) = update.js_paths {
+            sets.push("js_paths = ?");
+            binds.push(serde_json::to_string(jp).unwrap_or_else(|_| "[]".into()));
         }
         if let Some(ref mdd) = update.extra_mdd_paths {
             sets.push("extra_mdd_paths = ?");
@@ -296,13 +296,15 @@ struct DictConfigRow {
     custom_css: String,
     custom_js: String,
     js_enabled: i32,
-    css_path: Option<String>,
-    js_path: Option<String>,
+    css_paths: String,
+    js_paths: String,
     extra_mdd_paths: String,
 }
 
 impl From<DictConfigRow> for DictConfig {
     fn from(r: DictConfigRow) -> Self {
+        let css_paths: Vec<String> = serde_json::from_str(&r.css_paths).unwrap_or_default();
+        let js_paths: Vec<String> = serde_json::from_str(&r.js_paths).unwrap_or_default();
         let mdd_paths: Vec<String> = serde_json::from_str(&r.extra_mdd_paths).unwrap_or_default();
         Self {
             dict_id: DictId(r.dict_id),
@@ -312,8 +314,8 @@ impl From<DictConfigRow> for DictConfig {
             custom_css: r.custom_css,
             custom_js: r.custom_js,
             js_enabled: r.js_enabled != 0,
-            css_path: r.css_path.filter(|s| !s.is_empty()),
-            js_path: r.js_path.filter(|s| !s.is_empty()),
+            css_paths,
+            js_paths,
             extra_mdd_paths: mdd_paths,
         }
     }

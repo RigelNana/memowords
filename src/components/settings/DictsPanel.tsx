@@ -766,8 +766,8 @@ function DictDetail({ dictId, dictMeta }: { dictId: string; dictMeta: DictMeta }
   const [displayName, setDisplayName] = useState(dictMeta.title);
   const [customCss, setCustomCss] = useState("");
   const [customJs, setCustomJs] = useState("");
-  const [cssPath, setCssPath] = useState("");
-  const [jsPath, setJsPath] = useState("");
+  const [cssPaths, setCssPaths] = useState<string[]>([]);
+  const [jsPaths, setJsPaths] = useState<string[]>([]);
   const [mddPaths, setMddPaths] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -780,24 +780,13 @@ function DictDetail({ dictId, dictMeta }: { dictId: string; dictMeta: DictMeta }
       if (cfg.display_name) setDisplayName(cfg.display_name);
       if (cfg.custom_css) setCustomCss(cfg.custom_css);
       if (cfg.custom_js) setCustomJs(cfg.custom_js);
-      if (cfg.css_path) setCssPath(cfg.css_path);
-      if (cfg.js_path) setJsPath(cfg.js_path);
+      if (cfg.css_paths?.length) setCssPaths(cfg.css_paths);
+      if (cfg.js_paths?.length) setJsPaths(cfg.js_paths);
       if (cfg.extra_mdd_paths?.length) setMddPaths(cfg.extra_mdd_paths);
     }).catch((e) => {
       console.error("[DictDetail] getDictConfig failed:", e);
     });
   }, [dictId]);
-
-  const handleBrowseFile = useCallback(
-    async (
-      setter: (v: string) => void,
-      filters?: { name: string; extensions: string[] }[],
-    ) => {
-      const selected = await open({ directory: false, multiple: false, filters });
-      if (selected && typeof selected === "string") setter(selected);
-    },
-    [],
-  );
 
   const handleAddMdd = useCallback(async () => {
     const selected = await open({
@@ -823,8 +812,8 @@ function DictDetail({ dictId, dictMeta }: { dictId: string; dictMeta: DictMeta }
       custom_css: customCss,
       custom_js: customJs,
       js_enabled: customJs.length > 0,
-      css_path: cssPath || undefined,
-      js_path: jsPath || undefined,
+      css_paths: cssPaths.length > 0 ? cssPaths : undefined,
+      js_paths: jsPaths.length > 0 ? jsPaths : undefined,
       extra_mdd_paths: mddPaths,
     };
     console.debug("[DictDetail] saving config:", dictId, payload);
@@ -838,7 +827,7 @@ function DictDetail({ dictId, dictMeta }: { dictId: string; dictMeta: DictMeta }
       console.error("[DictDetail] save failed:", e);
     }
     setSaving(false);
-  }, [dictId, displayName, dictMeta.title, customCss, customJs, cssPath, jsPath, mddPaths]);
+  }, [dictId, displayName, dictMeta.title, customCss, customJs, cssPaths, jsPaths, mddPaths]);
 
   const inputCls =
     "h-8 w-full rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5 text-sm text-text-primary outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent";
@@ -894,52 +883,66 @@ function DictDetail({ dictId, dictMeta }: { dictId: string; dictMeta: DictMeta }
         )}
       </div>
 
-      {/* CSS file path */}
+      {/* CSS file paths */}
       <div>
         <label className="mb-1 block text-xs font-medium text-text-secondary">
-          CSS file <span className="font-normal text-text-tertiary">(optional)</span>
+          CSS files <span className="font-normal text-text-tertiary">(optional, multiple)</span>
         </label>
-        <div className="flex gap-1.5">
-          <div className="flex h-8 flex-1 items-center overflow-hidden rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5">
-            {cssPath ? (
-              <div className="flex flex-1 items-center gap-1.5 overflow-hidden">
-                <span className="flex-1 truncate font-mono text-[11px] text-text-primary">{cssPath.split("/").pop()}</span>
-                <button onClick={() => setCssPath("")} className="shrink-0 text-text-tertiary hover:text-text-secondary"><X size={11} /></button>
-              </div>
-            ) : (
+        <div className="flex flex-col gap-1">
+          {cssPaths.map((p, i) => (
+            <div key={i} className="flex h-8 items-center gap-1.5 rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5">
+              <span className="flex-1 truncate font-mono text-[11px] text-text-primary">{p.split("/").pop() || p.split("\\").pop()}</span>
+              <button onClick={() => setCssPaths(prev => prev.filter((_, idx) => idx !== i))} className="shrink-0 text-text-tertiary hover:text-text-secondary"><X size={11} /></button>
+            </div>
+          ))}
+          {cssPaths.length === 0 && (
+            <div className="flex h-8 items-center rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5">
               <span className="text-[11px] text-text-tertiary">None</span>
-            )}
-          </div>
+            </div>
+          )}
           <button
-            onClick={() => handleBrowseFile(setCssPath, [{ name: "CSS", extensions: ["css"] }])}
+            onClick={async () => {
+              const selected = await open({ directory: false, multiple: true, filters: [{ name: "CSS", extensions: ["css"] }] });
+              if (selected) {
+                const paths = Array.isArray(selected) ? selected : [selected];
+                setCssPaths(prev => [...new Set([...prev, ...paths])]);
+              }
+            }}
             className={browseBtn}
           >
-            Browse
+            Add CSS
           </button>
         </div>
       </div>
 
-      {/* JS file path */}
+      {/* JS file paths */}
       <div>
         <label className="mb-1 block text-xs font-medium text-text-secondary">
-          JS file <span className="font-normal text-text-tertiary">(optional)</span>
+          JS files <span className="font-normal text-text-tertiary">(optional, multiple)</span>
         </label>
-        <div className="flex gap-1.5">
-          <div className="flex h-8 flex-1 items-center overflow-hidden rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5">
-            {jsPath ? (
-              <div className="flex flex-1 items-center gap-1.5 overflow-hidden">
-                <span className="flex-1 truncate font-mono text-[11px] text-text-primary">{jsPath.split("/").pop()}</span>
-                <button onClick={() => setJsPath("")} className="shrink-0 text-text-tertiary hover:text-text-secondary"><X size={11} /></button>
-              </div>
-            ) : (
+        <div className="flex flex-col gap-1">
+          {jsPaths.map((p, i) => (
+            <div key={i} className="flex h-8 items-center gap-1.5 rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5">
+              <span className="flex-1 truncate font-mono text-[11px] text-text-primary">{p.split("/").pop() || p.split("\\").pop()}</span>
+              <button onClick={() => setJsPaths(prev => prev.filter((_, idx) => idx !== i))} className="shrink-0 text-text-tertiary hover:text-text-secondary"><X size={11} /></button>
+            </div>
+          ))}
+          {jsPaths.length === 0 && (
+            <div className="flex h-8 items-center rounded-[var(--radius-sm)] border border-border bg-surface-base px-2.5">
               <span className="text-[11px] text-text-tertiary">None</span>
-            )}
-          </div>
+            </div>
+          )}
           <button
-            onClick={() => handleBrowseFile(setJsPath, [{ name: "JavaScript", extensions: ["js"] }])}
+            onClick={async () => {
+              const selected = await open({ directory: false, multiple: true, filters: [{ name: "JavaScript", extensions: ["js"] }] });
+              if (selected) {
+                const paths = Array.isArray(selected) ? selected : [selected];
+                setJsPaths(prev => [...new Set([...prev, ...paths])]);
+              }
+            }}
             className={browseBtn}
           >
-            Browse
+            Add JS
           </button>
         </div>
       </div>
